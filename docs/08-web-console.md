@@ -30,9 +30,13 @@ Rules               list with type / status / fire statistics
                     editor per type (threshold, time, state, policy) · YAML as stored in git
                     lifecycle: draft → shadow → active → paused
                     Simulate on history (chart with baseline and threshold, firings per page / timeline / matching records)
-Triggers            Schedules (cron, what it collects, which rules it evaluates, run now)
-                    Webhooks (endpoint, last received, send test event)
-                    Pollers (tool, interval, feeds rules, poll now)  ·  Event log
+Events              Live stream (every event with its consumers, acks, latency, envelope, causal chain)
+                    Publish (send a test event through ingress, idempotency and all consumers; see the chain it causes)
+                    Catalogue (event types, producers, keys, retention, consumers)
+                    Consumers (durable subscriptions, filters, ack policy, processed counts)
+                    Producers & timers (timer service with armed timers, webhook ingress, outbox/CDC connectors,
+                                        the periodic remainder: collectors and reconciliation)
+                    Dead letters (failed deliveries with replay)
 Tools               catalogue (server, class, risk, health) · spec the model reads
                     test bench: form from the input schema, dry run, live run through policy
 Playbooks           steps, allowed tools, autonomy level, "done" definition
@@ -58,11 +62,12 @@ Approvals & audit   approval cards (dry-run preview, policy reason, approver) ·
 - Lifecycle buttons that enforce draft → shadow → active; every transition is audited.
 - Simulation against history before activation: for threshold rules a chart with signal, same-weekday-median baseline, threshold line and firing markers per page; for time rules the reminder timeline; for state rules the matching records; for policy rules a link to the tool bench.
 
-**Triggers**
-- Schedules with cron, the collectors they run and the rules they evaluate, with "run now" for testing.
-- Webhooks with endpoint path, last delivery and a "send test event" that goes through the real path.
-- Pollers with tool, interval and the rules they feed.
-- The event log every firing writes to.
+**Events** (design in [doc 09](09-event-messaging.md))
+- Live stream of the bus: type, subject, which consumers acked, latency, delivery status; click an event for its CloudEvents envelope, what each consumer did, and the causal chain by correlation id.
+- Publish a test event of any catalogued type and watch the chain it causes (for example `cms.page.published` → `crawl.page.changed` → pattern rule → `task.created` → `approval.requested`). Publishing twice with the same idempotency key shows the duplicate being dropped.
+- Catalogue and consumers as rendered from the files in git; processed counts per consumer.
+- Timer service view: every armed durable timer with "fire now"; webhook ingress with signed test deliveries; outbox and CDC connectors with lag; the periodic remainder (collectors for pull-only sources and reconciliation sweeps) clearly separated from the push path.
+- Dead-letter queue with the failing consumer, error and attempts, and a replay button. A "make the rule engine crash on the next event" switch exists to rehearse this.
 
 **Tools**
 - Catalogue with server, class (read / write / communicate / knowledge / meta), risk, health and last call.
@@ -113,8 +118,9 @@ GET  /entities/{table}  POST/PUT /entities/{table}
 GET  /rules  GET /rules/{id}  POST /rules  PUT /rules/{id}  POST /rules/{id}/status {to}
 POST /rules/{id}/simulate {from, to}           GET  /rules/{id}/explain?at=
 
-GET  /triggers/schedules|webhooks|pollers      POST /triggers/schedules/{id}/run   POST /triggers/webhooks/{id}/test
-GET  /events?kind=&since=
+GET  /events/stream (SSE)  GET /events?type=&correlation=&since=   POST /events/publish {type, subject, data, idempotencykey}
+GET  /events/catalogue  GET /events/consumers  GET /events/timers  POST /events/timers/{id}/fire
+GET  /events/dlq  POST /events/dlq/{id}/replay      POST /producers/webhooks/{id}/test   POST /jobs/{id}/run
 
 GET  /tools  GET /tools/{name}                 POST /tools/{name}/call {args, dry_run}   (passes the policy engine)
 GET  /playbooks  GET /playbooks/{id}

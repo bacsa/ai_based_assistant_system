@@ -370,6 +370,10 @@ const RULES = [
     description: 'Impressions on a key page fell: ranking or indexing problem.', signal: 'search_console.impressions', scope_pages: [...KEY_PAGES],
     baseline: { method: 'same_weekday_median', window_days: 28 }, condition: { ratio_lt: 0.75, consecutive: 2, min_baseline: 500 }, cooldown_days: 3, playbook: 'seo-drop-triage',
     allowed_actions: ['slack.post_message', 'ticketing.create_issue'], escalation: [{ after: '48h', notify_role: 'marketing_lead' }], stats: { fired30: 5, acked: 0, dismissed: 0 } },
+  { id: 'seo-key-page-meta-regression', type: 'pattern', status: 'active', owner: 'marketing', owner_role: 'seo_owner', severity: 'high', review_date: '2027-04-01',
+    description: 'A key page lost index,follow, its canonical or its title right after a CMS publish. Fires on the crawl diff within seconds, before traffic is lost.',
+    pattern: { on: 'crawl.page.changed', where: { path_in: 'key_pages', changed_fields_any: ['robots', 'canonical', 'title'] }, after: 'cms.page.published', within: '10m', key: 'path' },
+    playbook: 'seo-drop-triage', allowed_actions: ['slack.post_message', 'ticketing.create_issue', 'cms.remove_noindex', 'cms.set_page_meta'], escalation: [{ after: '4h', notify_role: 'marketing_lead' }], stats: { fired30: 1, acked: 1, dismissed: 0 } },
   { id: 'vat-return', type: 'time', status: 'active', owner: 'finance', owner_role: 'finance_lead', severity: 'high', review_date: '2027-01-15',
     description: 'Monthly VAT return must be filed with NAV by the 20th.', due: { day_of_month: 20 }, lead_times_days: [10, 3, 1], requires_ack: true, playbook: 'vat-return-checklist',
     context_tools: ['erp.get_period_status', 'kb.search'], escalation: [{ after: '48h', notify_role: 'cfo' }], stats: { fired30: 3, acked: 3, dismissed: 0 } },
@@ -468,7 +472,15 @@ const INIT_INVOICES = [
 
 function initialState() {
   return {
-    ui: { view: 'overview', kbTab: 'documents', ruleId: 'seo-organic-drop', ruleFilter: 'all', toolName: 'kb.search', playbookId: 'seo-drop-triage', docId: null, labTab: 'scenario', trigTab: 'schedules' },
+    ui: { view: 'overview', kbTab: 'documents', ruleId: 'seo-organic-drop', ruleFilter: 'all', toolName: 'kb.search', playbookId: 'seo-drop-triage', docId: null, labTab: 'scenario', trigTab: 'schedules', evTab: 'stream', evFilter: '', evOpen: null, pubType: 'cms.page.published' },
+    bus: { seq: 0, stream: [], dlq: [], live: false, failNext: false, timers: [
+      { id: 'tmr-vat', fireAt: dayStr(10) + ' 08:00', type: 'deadline.reminder.due', key: 'vat-return', reason: 'VAT return: 10 days before the 20th' },
+      { id: 'tmr-ssl', fireAt: dayStr(6) + ' 08:00', type: 'deadline.reminder.due', key: 'ssl-cert-expiry', reason: 'TLS expiry: 3 days before' },
+      { id: 'tmr-inv0912', fireAt: dayStr(1) + ' 08:00', type: 'deadline.reminder.due', key: 'INV-2026-0912', reason: 'invoice reminder level 3 window' },
+      { id: 'tmr-so10251', fireAt: dayStr(4) + ' 09:00', type: 'deadline.reminder.due', key: 'SO-10251', reason: 'order awaiting payment +7 d' },
+      { id: 'tmr-day', fireAt: dayStr(1) + ' 00:05', type: 'day.closed', key: dayStr(0), reason: 'triggers Search Console and analytics collectors' },
+    ] },
+    pageFacts: {},
     docs: JSON.parse(JSON.stringify(DOCS)),
     sources: JSON.parse(JSON.stringify(SOURCES)),
     glossary: JSON.parse(JSON.stringify(GLOSSARY)),
@@ -514,12 +526,14 @@ function initialState() {
 
 let state = initialState();
 const LS_KEY = 'assistant-control-room-v1';
-function save() { try { const { kbResults, toolResult, lastRuleSim, ...rest } = state; localStorage.setItem(LS_KEY, JSON.stringify(rest)); } catch (e) { /* storage unavailable */ } }
+function save() { try { const { kbResults, toolResult, lastRuleSim, pubResult, ...rest } = state; localStorage.setItem(LS_KEY, JSON.stringify(rest)); } catch (e) { /* storage unavailable */ } }
 function load() {
   try {
     const raw = localStorage.getItem(LS_KEY); if (!raw) return;
     const s = JSON.parse(raw); if (!s || !s.rules || !s.docs) return;
-    state = { ...initialState(), ...s, ui: { ...initialState().ui, ...(s.ui || {}) } };
+    state = { ...initialState(), ...s, ui: { ...initialState().ui, ...(s.ui || {}) }, bus: { ...initialState().bus, ...(s.bus || {}), live: false, failNext: false } };
+    if (state.ui.view === 'triggers') state.ui.view = 'events';
+    if (!state.rules.some(r => r.type === 'pattern')) state.rules.splice(2, 0, JSON.parse(JSON.stringify(RULES.find(r => r.type === 'pattern'))));
   } catch (e) { /* ignore */ }
 }
 
@@ -646,6 +660,8 @@ function evaluateRules(ruleIds, source) {
             title: `${field === 'clicks' ? 'Organic clicks' : 'Impressions'} on ${page} at ${pct(last.ratio)} of baseline`,
             evidence: `${field} ${last.value} vs same-weekday median ${Math.round(last.baseline)} over ${r.baseline.window_days} days; below ${pct(r.condition.ratio_lt)} for ${r.condition.consecutive} consecutive days.` };
           state.tasks.unshift(t); addEvent('rule', `${r.id} fired`, `${page}: ${pct(last.ratio)} of baseline → task for ${r.owner_role}`); audit('rule-engine', 'rule.fired', `${r.id} v1 ${page} → ${t.id} (${r.severity}, ${r.owner_role})`);
+          emit('seo.anomaly.detected', { subject: page, key: page, actor: 'rule-engine', data: { rule: r.id, ratio: +last.ratio.toFixed(2), baseline: Math.round(last.baseline), value: last.value }, idem: `anomaly:${r.id}:${page}:${last.date}` });
+          emit('task.created', { subject: t.id, key: t.id, actor: 'rule-engine', data: { task_id: t.id, rule: r.id, severity: t.severity, owner_role: t.owner, page }, idem: `task:${t.id}` });
         } else if (fired && r.status === 'shadow') {
           addEvent('shadow', `${r.id} would have fired`, `${page}: ${pct(last.ratio)} of baseline (shadow mode, no notification)`);
         }
@@ -656,6 +672,7 @@ function evaluateRules(ruleIds, source) {
       if (fired && r.status === 'active' && !openTaskFor(r.id)) {
         const t = { id: uid('task'), ruleId: r.id, type: 'time', severity: severityForTime(ts), owner: r.owner_role, status: 'open', createdAt: nowStr(), title: `${r.description.replace(/\.$/, '')} – due ${ts.due} (${ts.daysLeft < 0 ? Math.abs(ts.daysLeft) + ' days overdue' : 'in ' + ts.daysLeft + ' days'})`, evidence: `Lead times ${ts.leads.join('/')} days; today is ${ts.daysLeft} days before the due date.` };
         state.tasks.unshift(t); addEvent('rule', `${r.id} fired`, `due ${ts.due} → task for ${r.owner_role}`); audit('rule-engine', 'rule.fired', `${r.id} → ${t.id}`);
+        emit('task.created', { subject: t.id, key: t.id, actor: 'rule-engine', data: { task_id: t.id, rule: r.id, severity: t.severity, owner_role: t.owner, due: ts.due }, idem: `task:${t.id}` });
       }
     } else if (r.type === 'state') {
       const rec = evalState(r); results.push({ rule: r, fired: rec.length > 0, records: rec });
@@ -663,6 +680,8 @@ function evaluateRules(ruleIds, source) {
         if (r.status === 'active' && !openTaskFor(r.id, o.id)) {
           const t = { id: uid('task'), ruleId: r.id, type: 'state', key: o.id, severity: r.severity, owner: r.owner_role, status: 'open', createdAt: nowStr(), title: `${o.id} ${r.entity === 'orders' ? 'awaiting payment for ' + o.days + ' days' : 'without response for ' + o.hours + ' h'}`, evidence: JSON.stringify(o) };
           state.tasks.unshift(t); addEvent('rule', `${r.id} fired`, `${o.id} → task for ${r.owner_role}`); audit('rule-engine', 'rule.fired', `${r.id} ${o.id} → ${t.id}`);
+          emit('order.stuck.detected', { subject: o.id, key: o.id, actor: 'rule-engine', data: { order_id: o.id, days: o.days, customer: o.customer }, idem: `stuck:${o.id}:${TODAY}` });
+          emit('task.created', { subject: t.id, key: t.id, actor: 'rule-engine', data: { task_id: t.id, rule: r.id, severity: t.severity, owner_role: t.owner, record: o.id }, idem: `task:${t.id}` });
         }
       }
     }
@@ -695,6 +714,8 @@ function policyDecision(tool, args) {
 }
 function sessionsFor(page, days) { return state.metrics[page].slice(-days).map(r => ({ date: r.date, sessions: Math.round(r.clicks * 1.62) })); }
 function diffFor(url, sinceDays) {
+  const pf = state.pageFacts && state.pageFacts[url];
+  if (pf) return { changes: [{ field: pf.field, before: pf.before, after: pf.after, at: pf.at }], summary: `${pf.field} changed to ${pf.after} (from event ${pf.eventId})` };
   const sc = state.scenario;
   if (sc.applied && sc.page === url) {
     const when = dayStr(-(sc.days + 1)) + ' 10:05';
@@ -735,9 +756,11 @@ function callTool(name, args, actor, opts = {}) {
     const dry = runTool(name, { ...args, dry_run: true });
     const ap = { id: uid('apr'), tool: name, args, dryRun: typeof dry === 'object' ? JSON.stringify(dry.planned_change || dry.would_send || dry) : String(dry), requestedBy: actor, approver: dec.approver, rule: dec.rule, status: 'pending', at: nowStr(), taskId: opts.taskId || null };
     state.approvals.unshift(ap); addEvent('approval', name, `waits for ${dec.approver} (${dec.why})`); audit(actor, 'tool.dry_run', `${name} ${JSON.stringify(args)} → approval ${ap.id} requested (${dec.rule})`);
+    emit('approval.requested', { subject: ap.id, key: ap.id, actor, data: { approval_id: ap.id, tool: name, approver_role: dec.approver, policy: dec.rule, task_id: opts.taskId || null }, idem: `approval:${ap.id}` });
     return { decision: dec, approval: ap, dry };
   }
   const res = runTool(name, args); audit(actor, 'tool.call', `${name} ${JSON.stringify(args)} → ok (${dec.rule})`);
+  emit('tool.call.completed', { subject: name, key: name, actor, data: { tool: name, args, policy: dec.rule, decision: 'auto' }, idem: `call:${name}:${state.bus.seq + 1}` });
   return { decision: dec, result: res };
 }
 
@@ -761,16 +784,17 @@ function applyScenario() {
   return { res, task };
 }
 function resetScenario(silent) {
-  state.metrics = genMetrics(); state.deploys = state.deploys.filter(d => !d.scenario);
-  state.tasks = state.tasks.filter(t => !(t.type === 'threshold' && t.status !== 'done'));
+  state.metrics = genMetrics(); state.deploys = state.deploys.filter(d => !d.scenario); state.pageFacts = {};
+  state.tasks = state.tasks.filter(t => !((t.type === 'threshold' || t.type === 'pattern') && t.status !== 'done'));
   state.approvals = state.approvals.filter(a => !a.taskId || state.tasks.some(t => t.id === a.taskId));
   state.scenario.applied = false; state.lastEval = null;
   if (!silent) addEvent('test', 'Scenario reset', 'metrics restored to demo baseline');
 }
 function buildTrace(task) {
   const rule = getRule(task.ruleId); const page = task.page; const rows = state.metrics[page];
-  const ev = evalThreshold(rule, rows, 'clicks'); const last = ev.points[ev.points.length - 1];
-  const evI = evalThreshold({ ...rule, condition: { ...rule.condition, min_baseline: 0 } }, rows, 'impressions'); const lastI = evI.points[evI.points.length - 1];
+  const thr = rule.type === 'threshold' ? rule : getRule('seo-organic-drop') || state.rules.find(r => r.type === 'threshold');
+  const ev = evalThreshold(thr, rows, 'clicks'); const last = ev.points[ev.points.length - 1];
+  const evI = evalThreshold({ ...thr, condition: { ...thr.condition, min_baseline: 0 } }, rows, 'impressions'); const lastI = evI.points[evI.points.length - 1];
   const impDown = lastI.ratio != null && lastI.ratio < 0.8;
   const cause = task.cause || 'unknown';
   const steps = []; const actor = 'agent:monitoring';
@@ -791,7 +815,7 @@ function buildTrace(task) {
     unknown: ['Site-wide or query-level ranking change, possibly an algorithm update (medium)', 'Seasonality for this page (medium)', 'Lost backlinks or a SERP layout change (low)'],
   }[cause];
   const owner = PEOPLE.find(p => p.role === rule.owner_role);
-  const alert = `*${task.title}*\nClicks ${last.value}/day vs usual ${Math.round(last.baseline)} (${pct(last.ratio)}), ${rule.condition.consecutive}+ days.\nLikely causes:\n${causes.map((c, i) => `${i + 1}. ${c}`).join('\n')}\nRecommended: ${cause === 'noindex' ? 'remove the noindex tag (approval card sent)' : cause === 'title' ? 'restore the previous title and meta (approval card sent)' : cause === 'server' ? 'IT to investigate the 503s; ticket created' : 'monitor for 3 more days; ticket created for a manual review'}.\nRule: ${rule.id} · Task: ${task.id}`;
+  const alert = `*${task.title}*\n${rule.type === 'pattern' ? `Detected from the crawl diff ${task.detectedBy || 'seconds after the CMS publish'}; traffic is still at ${pct(last.ratio)} of baseline, so nothing has been lost yet.` : `Clicks ${last.value}/day vs usual ${Math.round(last.baseline)} (${pct(last.ratio)}), ${thr.condition.consecutive}+ days.`}\nLikely causes:\n${causes.map((c, i) => `${i + 1}. ${c}`).join('\n')}\nRecommended: ${cause === 'noindex' ? 'remove the noindex tag (approval card sent)' : cause === 'title' ? 'restore the previous title and meta (approval card sent)' : cause === 'server' ? 'IT to investigate the 503s; ticket created' : 'monitor for 3 more days; ticket created for a manual review'}.\nRule: ${rule.id} · Task: ${task.id}`;
   steps.push({ call: `slack.post_message(channel=${owner ? owner.channel : '#marketing'})`, res: 'Alert posted (policy: auto, owner channel)', note: `Owner: ${owner ? owner.name : rule.owner_role}.`, act: true });
   let action = null;
   if (cause === 'noindex') action = callTool('cms.remove_noindex', { path: page, dry_run: false }, actor, { taskId: task.id });
@@ -834,13 +858,231 @@ function chatAnswer(q) {
 function personName(role) { const p = PEOPLE.find(x => x.role === role); return p ? p.name : role; }
 function daysSince(d) { return Math.round((today - parseDate(d)) / 864e5); }
 
+// ---------- event bus (in-browser model of the durable bus)
+const TOPICS = [
+  { type: 'erp.invoice.posted', tier: 'domain', producer: 'ERP outbox', key: 'invoice_id', retention: '90 d', consumers: ['rule-engine', 'timer-service', 'metrics-projection', 'audit-sink'] },
+  { type: 'erp.invoice.paid', tier: 'domain', producer: 'ERP outbox', key: 'invoice_id', retention: '90 d', consumers: ['rule-engine', 'timer-service', 'metrics-projection', 'audit-sink'] },
+  { type: 'erp.order.status_changed', tier: 'domain', producer: 'ERP CDC (Debezium)', key: 'order_id', retention: '30 d', consumers: ['rule-engine', 'timer-service', 'metrics-projection', 'audit-sink'] },
+  { type: 'cms.page.published', tier: 'domain', producer: 'CMS outbox', key: 'path', retention: '30 d', consumers: ['crawler-collector', 'rule-engine', 'audit-sink'] },
+  { type: 'crawl.page.changed', tier: 'domain', producer: 'crawler collector', key: 'path', retention: '30 d', consumers: ['rule-engine', 'audit-sink'] },
+  { type: 'seo.metric.collected', tier: 'domain', producer: 'Search Console collector (on day.closed, changes only)', key: 'path', retention: '60 d', consumers: ['rule-engine', 'metrics-projection'] },
+  { type: 'uptime.check.failed', tier: 'domain', producer: 'webhook ingress / uptime monitor', key: 'site', retention: '30 d', consumers: ['rule-engine', 'audit-sink'] },
+  { type: 'tls.certificate.observed', tier: 'domain', producer: 'TLS collector', key: 'host', retention: '400 d', consumers: ['timer-service', 'rule-engine'] },
+  { type: 'ticket.created', tier: 'domain', producer: 'webhook ingress / Jira', key: 'ticket_id', retention: '30 d', consumers: ['rule-engine', 'timer-service'] },
+  { type: 'kb.document.changed', tier: 'domain', producer: 'source connectors, console', key: 'document_id', retention: '30 d', consumers: ['knowledge-indexer'] },
+  { type: 'producer.heartbeat', tier: 'domain', producer: 'every producer, 60 s', key: 'producer', retention: '2 d', consumers: ['liveness-monitor'] },
+  { type: 'day.closed', tier: 'timer', producer: 'timer service', key: 'date', retention: '7 d', consumers: ['search-console-collector', 'reconciler'] },
+  { type: 'deadline.reminder.due', tier: 'timer', producer: 'timer service', key: 'deadline_id', retention: '30 d', consumers: ['rule-engine'] },
+  { type: 'seo.anomaly.detected', tier: 'derived', producer: 'rule engine', key: 'path', retention: '30 d', consumers: ['agent-orchestrator', 'notifier', 'audit-sink'] },
+  { type: 'order.stuck.detected', tier: 'derived', producer: 'rule engine', key: 'order_id', retention: '30 d', consumers: ['agent-orchestrator', 'notifier', 'audit-sink'] },
+  { type: 'site.incident.opened', tier: 'derived', producer: 'rule engine', key: 'site', retention: '30 d', consumers: ['agent-orchestrator', 'notifier', 'audit-sink'] },
+  { type: 'task.created', tier: 'derived', producer: 'rule engine', key: 'task_id', retention: '90 d', consumers: ['agent-orchestrator', 'notifier', 'metrics-projection', 'audit-sink'] },
+  { type: 'task.acknowledged', tier: 'derived', producer: 'console, Slack buttons', key: 'task_id', retention: '90 d', consumers: ['agent-orchestrator', 'metrics-projection', 'audit-sink'] },
+  { type: 'approval.requested', tier: 'operational', producer: 'guardrails', key: 'approval_id', retention: '90 d', consumers: ['notifier', 'audit-sink'] },
+  { type: 'approval.decided', tier: 'operational', producer: 'console, Slack buttons', key: 'approval_id', retention: '90 d', consumers: ['agent-orchestrator', 'learning-loop', 'audit-sink'] },
+  { type: 'tool.call.completed', tier: 'operational', producer: 'tool gateway', key: 'call_id', retention: '30 d', consumers: ['audit-sink', 'metrics-projection'] },
+  { type: 'agent.step.completed', tier: 'operational', producer: 'agent orchestrator', key: 'task_id', retention: '30 d', consumers: ['audit-sink'] },
+];
+const SUBSCRIPTIONS = [
+  { consumer: 'rule-engine', filters: ['erp.>', 'cms.>', 'crawl.>', 'seo.metric.>', 'uptime.>', 'tls.>', 'ticket.>', 'deadline.>'], role: 'Stream processor: baselines, consecutive counters, event patterns, state timers', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
+  { consumer: 'timer-service', filters: ['erp.invoice.>', 'erp.order.>', 'tls.>', 'ticket.created'], role: 'Arms and cancels durable timers; emits deadline.reminder.due and day.closed', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
+  { consumer: 'crawler-collector', filters: ['cms.page.published'], role: 'Re-crawls the touched page at once; publishes crawl.page.changed with the diff', durable: true, ack: 'explicit, 60 s', maxDeliver: 3 },
+  { consumer: 'search-console-collector', filters: ['day.closed'], role: 'Fetches the closed day, diffs with the snapshot, publishes seo.metric.collected per changed page', durable: true, ack: 'explicit, 5 min', maxDeliver: 3 },
+  { consumer: 'agent-orchestrator', filters: ['task.created', 'task.acknowledged', 'approval.decided', 'seo.anomaly.detected', 'order.stuck.detected', 'site.incident.opened'], role: 'Starts a durable workflow per task; waits on approval and acknowledgement events; runs playbooks', durable: true, ack: 'explicit, 10 min', maxDeliver: 5 },
+  { consumer: 'notifier', filters: ['task.created', 'approval.requested', 'seo.anomaly.detected', 'order.stuck.detected', 'site.incident.opened', 'producer.silent'], role: 'Renders events into Slack/Teams/email; one message per task, updated in place', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
+  { consumer: 'knowledge-indexer', filters: ['kb.document.changed', 'ticket.resolved'], role: 'Incremental re-index with ACL stamping', durable: true, ack: 'explicit, 5 min', maxDeliver: 3 },
+  { consumer: 'metrics-projection', filters: ['erp.>', 'seo.metric.>', 'task.>', 'tool.call.>'], role: 'Builds the metrics and entity read models; rebuildable by replay', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
+  { consumer: 'learning-loop', filters: ['approval.decided', 'task.resolved'], role: 'Computes approval and correction rates per (playbook, tool); proposes autonomy changes', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
+  { consumer: 'liveness-monitor', filters: ['producer.heartbeat'], role: 'Emits producer.silent when a source misses 2 × its interval (dead-man switch)', durable: true, ack: 'explicit, 10 s', maxDeliver: 2 },
+  { consumer: 'audit-sink', filters: ['>'], role: 'Append-only copy of every event; the audit log is this projection', durable: true, ack: 'explicit, 30 s', maxDeliver: 10 },
+  { consumer: 'reconciler', filters: ['day.closed'], role: 'Compares sources with projections and publishes correction events (cron used for correctness)', durable: true, ack: 'explicit, 30 min', maxDeliver: 2 },
+];
+const SAMPLE_DATA = {
+  'cms.page.published': { path: '/pricing', revision: 4812, deployment_id: 'dep-2210', changed_fields: ['template', 'robots'], robots: 'noindex,follow', by: 'k.nagy' },
+  'crawl.page.changed': { path: '/pricing', changes: [{ field: 'robots', before: 'index,follow', after: 'noindex,follow' }] },
+  'seo.metric.collected': { path: '/pricing', date: TODAY, clicks: 70, impressions: 2900 },
+  'erp.invoice.posted': { invoice_id: 'INV-2026-0977', customer: 'Nordlicht GmbH', amount: 1250, due_date: dayStr(14) },
+  'erp.invoice.paid': { invoice_id: 'INV-2026-0912', amount: 2450 },
+  'erp.order.status_changed': { order_id: 'SO-10262', customer: 'Blue Office Zrt.', status: 'awaiting_payment', amount: 980, days_in_status: 9 },
+  'uptime.check.failed': { site: 'www.example.com', status: 503, region: 'eu-central' },
+  'tls.certificate.observed': { host: 'www.example.com', expires: dayStr(80), issuer: 'Example CA' },
+  'ticket.created': { ticket_id: 'WEB-431', summary: 'Pricing page shows old plans', priority: 'high' },
+  'kb.document.changed': { document_id: 'finance-handbook', change: 'modified', source: 'sharepoint' },
+  'deadline.reminder.due': { deadline_id: 'vat-return', lead_days: 10 },
+  'day.closed': { date: dayStr(-1) },
+  'producer.heartbeat': { producer: 'search-console-collector', interval_s: 60 },
+};
+function matchSubject(pattern, type) {
+  if (pattern === '>') return true;
+  if (pattern.endsWith('.>')) return type.startsWith(pattern.slice(0, -1));
+  return pattern === type;
+}
+function ulid() { const t = Date.now().toString(36).toUpperCase().padStart(9, '0'); let r = ''; for (let i = 0; i < 12; i++) r += '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[Math.floor(Math.random() * 32)]; return t + r; }
+function timeNow() { const d = new Date(); return `${fmtDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; }
+let emitDepth = 0;
+function emit(type, o = {}) {
+  const bus = state.bus; bus.seq++;
+  const ev = { seq: bus.seq, id: ulid(), type, subject: o.subject || '', key: o.key || o.subject || '', time: timeNow(), source: o.source || (TOPICS.find(t => t.type === type) || {}).producer || 'console', actor: o.actor || 'user:console', data: o.data || {}, idem: o.idem || `${type}:${o.subject || ''}:${bus.seq}`, correlation: o.correlation || currentCorrelation || null, causation: o.causation || currentCausation || null, consumers: [], latency: 0, status: 'delivered' };
+  if (!ev.correlation) ev.correlation = ev.id;
+  if (bus.stream.some(e => e.idem === ev.idem && e.status !== 'duplicate')) { ev.status = 'duplicate'; ev.consumers = [{ consumer: 'ingress', result: 'skipped', note: 'same idempotency key already processed; dropped' }]; bus.stream.unshift(ev); bus.stream = bus.stream.slice(0, 300); addEvent('event', type + ' (duplicate)', 'dropped by idempotency check'); return ev; }
+  const subs = SUBSCRIPTIONS.filter(s => s.filters.some(f => matchSubject(f, type)));
+  const t0 = performance.now();
+  const prevCorr = currentCorrelation, prevCaus = currentCausation; currentCorrelation = ev.correlation; currentCausation = ev.id; emitDepth++;
+  for (const s of subs) {
+    const h = HANDLERS[s.consumer];
+    try {
+      if (bus.failNext && s.consumer === 'rule-engine' && emitDepth === 1) { bus.failNext = false; throw new Error('simulated consumer crash (NullPointer in baseline update)'); }
+      const note = h ? h(ev) : 'recorded';
+      ev.consumers.push({ consumer: s.consumer, result: 'ok', note: note || 'recorded' });
+    } catch (err) {
+      ev.consumers.push({ consumer: s.consumer, result: 'failed', note: `${err.message} · 5 deliveries failed → dead letter` });
+      ev.status = 'dead-lettered';
+      bus.dlq.unshift({ id: uid('dl'), eventId: ev.id, seq: ev.seq, type, subject: ev.subject, consumer: s.consumer, error: err.message, attempts: 5, at: timeNow(), replayed: false });
+      addEvent('dlq', `${type} → ${s.consumer} failed`, err.message);
+    }
+  }
+  emitDepth--; currentCorrelation = prevCorr; currentCausation = prevCaus;
+  ev.latency = Math.round(performance.now() - t0 + 20 + Math.random() * 180);
+  bus.stream.unshift(ev); bus.stream = bus.stream.slice(0, 300);
+  addEvent('event', type, `${ev.subject ? ev.subject + ' · ' : ''}${subs.length} consumer(s)`);
+  return ev;
+}
+let currentCorrelation = null, currentCausation = null;
+function armTimer(id, fireAt, type, key, reason) { const bus = state.bus; bus.timers = bus.timers.filter(t => t.id !== id); bus.timers.push({ id, fireAt, type, key, reason }); bus.timers.sort((a, b) => a.fireAt.localeCompare(b.fireAt)); return `timer ${id} armed for ${fireAt}`; }
+function cancelTimer(pred) { const before = state.bus.timers.length; state.bus.timers = state.bus.timers.filter(t => !pred(t)); return before - state.bus.timers.length; }
+const HANDLERS = {
+  'crawler-collector'(ev) {
+    if (ev.type !== 'cms.page.published') return 'ignored';
+    const d = ev.data; const path = d.path || ev.subject;
+    state.deploys.unshift({ system: 'cms', at: ev.time.slice(0, 16), by: d.by || ev.actor, note: `Publish rev ${d.revision || '?'} (${(d.changed_fields || []).join(', ') || 'content'})`, eventId: ev.id });
+    const changes = [];
+    if (d.robots && /noindex/.test(d.robots)) changes.push({ field: 'robots', before: 'index,follow', after: d.robots });
+    if (d.title !== undefined && d.title !== null && (d.changed_fields || []).includes('title')) changes.push({ field: 'title', before: 'Pricing – plans for every team size | Example', after: d.title });
+    if (d.canonical && d.canonical !== path) changes.push({ field: 'canonical', before: path, after: d.canonical });
+    if (!changes.length) return `re-crawled ${path} in 1.8 s: no SEO-relevant change, nothing published`;
+    emit('crawl.page.changed', { subject: path, key: path, actor: 'crawler-collector', source: 'crawler-collector', data: { path, changes, deployment_id: d.deployment_id || null }, idem: `crawl:${path}:${d.revision || ev.id}` });
+    return `re-crawled ${path} in 1.8 s: ${changes.length} change(s) → published crawl.page.changed`;
+  },
+  'search-console-collector'(ev) {
+    if (ev.type !== 'day.closed') return 'ignored';
+    let n = 0;
+    for (const page of ALL_PAGES) {
+      const rows = state.metrics[page]; const last = rows[rows.length - 1]; const date = fmtDate(addDays(parseDate(last.date), 1)); if (date > TODAY) continue;
+      const [c, i] = PAGE_BASE[page]; const wd = parseDate(date).getDay(); const wk = (wd === 0 || wd === 6) ? 0.55 : 1; const f = state.scenario.applied && state.scenario.page === page ? 1 - state.scenario.drop / 100 : 1;
+      emit('seo.metric.collected', { subject: page, key: page, actor: 'search-console-collector', source: 'search-console-collector', data: { path: page, date, clicks: Math.round(c * wk * (0.9 + Math.random() * 0.2) * f), impressions: Math.round(i * wk * (0.9 + Math.random() * 0.2) * (f < 1 ? f * 1.1 : 1)) }, idem: `sc:${page}:${date}` }); n++;
+    }
+    return n ? `fetched ${ev.data.date}, ${n} page(s) changed → ${n} seo.metric.collected` : 'nothing new to fetch (already up to date)';
+  },
+  'rule-engine'(ev) {
+    const d = ev.data;
+    switch (ev.type) {
+      case 'cms.page.published': return `pattern seo-key-page-meta-regression armed for ${d.path || ev.subject}: waiting for crawl.page.changed within 10 m`;
+      case 'crawl.page.changed': {
+        const r = state.rules.find(x => x.type === 'pattern' && x.status !== 'paused' && x.status !== 'draft'); const path = d.path || ev.subject;
+        const hit = r && KEY_PAGES.includes(path) && (d.changes || []).some(c => r.pattern.where.changed_fields_any.includes(c.field));
+        if (!hit) return `no pattern matched (${KEY_PAGES.includes(path) ? 'no robots/canonical/title change' : 'not a key page'})`;
+        const ch = d.changes.find(c => r.pattern.where.changed_fields_any.includes(c.field));
+        state.pageFacts[path] = { field: ch.field, before: ch.before, after: ch.after, at: ev.time.slice(0, 16), eventId: ev.id };
+        if (r.status === 'shadow') { addEvent('shadow', `${r.id} would have fired`, path); return `pattern matched; rule in shadow mode, no task`; }
+        if (openTaskFor(r.id, path)) return 'pattern matched; task already open (deduplicated)';
+        const t = { id: uid('task'), ruleId: r.id, type: 'pattern', key: path, page: path, severity: r.severity, owner: r.owner_role, status: 'open', createdAt: nowStr(), cause: ch.field === 'robots' ? 'noindex' : 'title', detectedBy: `event ${ev.id.slice(-6)} (${ch.field} ${ch.before} → ${ch.after})`, title: `${ch.field === 'robots' ? 'noindex' : ch.field + ' regression'} detected on ${path} right after a CMS publish`, evidence: `crawl.page.changed: ${ch.field} "${ch.before}" → "${ch.after}"; preceded by cms.page.published (${d.deployment_id || 'deployment'}) on the same key.` };
+        state.tasks.unshift(t); audit('rule-engine', 'rule.fired', `${r.id} ${path} → ${t.id} (pattern, ${ev.id})`);
+        emit('seo.anomaly.detected', { subject: path, key: path, actor: 'rule-engine', source: 'rule-engine', data: { rule: r.id, kind: 'pattern', field: ch.field, after: ch.after }, idem: `anomaly:${r.id}:${path}:${ev.id}` });
+        emit('task.created', { subject: t.id, key: t.id, actor: 'rule-engine', source: 'rule-engine', data: { task_id: t.id, rule: r.id, severity: t.severity, owner_role: t.owner, page: path }, idem: `task:${t.id}` });
+        return `pattern matched → ${t.id} created ${ev.latency ? '' : 'immediately'}`;
+      }
+      case 'seo.metric.collected': {
+        const path = d.path || ev.subject; const rows = state.metrics[path]; if (!rows) return 'unknown page, ignored';
+        const i = rows.findIndex(r => r.date === d.date);
+        const row = { date: d.date, clicks: +d.clicks, impressions: +d.impressions };
+        if (i >= 0) rows[i] = row; else { rows.push(row); rows.sort((a, b) => a.date.localeCompare(b.date)); }
+        const before = state.tasks.length; const res = evaluateRules(state.rules.filter(r => r.type === 'threshold' && r.scope_pages.includes(path)).map(r => r.id)).filter(x => x.page === path);
+        const fired = res.filter(x => x.fired); const last = res[0];
+        return `baseline updated for ${path}; ratio ${pct(last && last.ratio)} · ${fired.length ? fired.map(x => x.rule.id + (x.rule.status === 'shadow' ? ' (shadow)' : ' → task')).join(', ') : (last && last.ratio != null && last.ratio < (last.rule.condition.ratio_lt) ? 'breach 1 of ' + last.rule.condition.consecutive + ' days' : 'normal')}${state.tasks.length > before ? '' : ''}`;
+      }
+      case 'erp.order.status_changed': {
+        const o = state.orders.find(x => x.id === d.order_id);
+        if (o) Object.assign(o, { status: d.status, days: +d.days_in_status || 0, customer: d.customer || o.customer, amount: d.amount || o.amount }); else state.orders.unshift({ id: d.order_id, customer: d.customer || '?', status: d.status, days: +d.days_in_status || 0, amount: +d.amount || 0 });
+        const r = getRule('order-stuck-awaiting-payment'); const res = r && d.status === 'awaiting_payment' ? evaluateRules([r.id]) : [];
+        const stuck = res.length && res[0].records.some(x => x.id === d.order_id);
+        return d.status === 'awaiting_payment' ? (stuck ? `state rule matched (${d.days_in_status} d > 7) → task` : `order tracked; stuck-order timer will fire at +7 d`) : `order ${d.order_id} → ${d.status}; stuck timer cancelled`;
+      }
+      case 'erp.invoice.posted': { if (!state.invoices.some(x => x.id === d.invoice_id)) state.invoices.unshift({ id: d.invoice_id, customer: d.customer || '?', amount: +d.amount || 0, overdue: 0, level: 0, flagged: false }); return 'invoice projected; reminder logic waits for the timer events'; }
+      case 'erp.invoice.paid': { const inv = state.invoices.find(x => x.id === d.invoice_id); if (inv) inv.overdue = 0; const ap = state.approvals.find(a => a.status === 'pending' && a.args.invoice_id === d.invoice_id); if (ap) { ap.status = 'rejected'; ap.decidedAt = nowStr(); ap.note = 'withdrawn: invoice paid'; audit('rule-engine', 'approval.withdrawn', `${ap.id}: invoice ${d.invoice_id} paid before the reminder was approved`); return 'invoice paid → pending reminder approval withdrawn'; } return 'invoice paid'; }
+      case 'uptime.check.failed': {
+        const recent = state.bus.stream.filter(e => e.type === 'uptime.check.failed' && e.status !== 'duplicate').length + 1;
+        if (recent >= 3 && !openTaskFor('uptime-incident', d.site)) {
+          const t = { id: uid('task'), ruleId: 'uptime-incident', type: 'state', key: d.site, severity: 'critical', owner: 'it_lead', status: 'open', createdAt: nowStr(), title: `Website incident: ${recent} failed checks on ${d.site}`, evidence: `uptime.check.failed × ${recent} within the window; last status ${d.status}` };
+          state.tasks.unshift(t); audit('rule-engine', 'rule.fired', `uptime-incident ${d.site} → ${t.id}`);
+          emit('site.incident.opened', { subject: d.site, key: d.site, actor: 'rule-engine', source: 'rule-engine', data: { site: d.site, failures: recent }, idem: `incident:${d.site}:${t.id}` });
+          emit('task.created', { subject: t.id, key: t.id, actor: 'rule-engine', source: 'rule-engine', data: { task_id: t.id, rule: 'uptime-incident', severity: 'critical', owner_role: 'it_lead' }, idem: `task:${t.id}` });
+          return `pattern "3 failures in 5 min" matched → incident ${t.id}`;
+        }
+        return `failure ${recent} of 3 in the 5-minute window; no incident yet`;
+      }
+      case 'tls.certificate.observed': { const r = getRule('ssl-cert-expiry'); if (r && d.expires) { r.due = { date: d.expires }; const t = state.tasks.find(x => x.ruleId === r.id && x.status !== 'done'); if (t && timeStatus(r).phase === 'upcoming') { t.status = 'done'; audit('rule-engine', 'task.done', `${t.id} resolved: certificate renewed (expires ${d.expires})`); return `expiry moved to ${d.expires}; open task resolved automatically`; } return `expiry recorded: ${d.expires}`; } return 'recorded'; }
+      case 'ticket.created': return 'SLA timer armed (4 h); rule ticket-first-response-sla is in draft, so no notification would follow';
+      case 'deadline.reminder.due': { const r = getRule(d.deadline_id); if (r && r.type === 'time') { const res = evaluateRules([r.id]); return res[0] && res[0].fired ? `time rule ${r.id} fired → task` : `timer fired but ${r.id} is outside its reminder window (${timeStatus(r).daysLeft} days left)`; } if (d.deadline_id && d.deadline_id.startsWith('SO-')) { const res = evaluateRules(['order-stuck-awaiting-payment']); return `stuck-order check for ${d.deadline_id}: ${res[0] && res[0].records.some(x => x.id === d.deadline_id) ? 'still unpaid → task' : 'paid, nothing to do'}`; } return `no rule bound to ${d.deadline_id}`; }
+      default: return 'no rule subscribed to this type';
+    }
+  },
+  'timer-service'(ev) {
+    const d = ev.data;
+    switch (ev.type) {
+      case 'erp.invoice.posted': return armTimer(`tmr-${d.invoice_id}`, fmtDate(addDays(parseDate(d.due_date || dayStr(14)), 7)) + ' 08:00', 'deadline.reminder.due', d.invoice_id, `invoice ${d.invoice_id}: level 1 reminder (+7 d after due)`);
+      case 'erp.invoice.paid': return `${cancelTimer(t => t.key === d.invoice_id)} timer(s) cancelled for ${d.invoice_id}`;
+      case 'erp.order.status_changed': return d.status === 'awaiting_payment' ? armTimer(`tmr-${d.order_id}`, dayStr(Math.max(0, 7 - (+d.days_in_status || 0))) + ' 09:00', 'deadline.reminder.due', d.order_id, `order ${d.order_id} awaiting payment +7 d`) : `${cancelTimer(t => t.key === d.order_id)} timer(s) cancelled for ${d.order_id}`;
+      case 'tls.certificate.observed': { cancelTimer(t => t.key === 'ssl-cert-expiry'); const exp = parseDate(d.expires); armTimer('tmr-ssl-14', fmtDate(addDays(exp, -14)) + ' 08:00', 'deadline.reminder.due', 'ssl-cert-expiry', 'TLS expiry: 14 days before'); return armTimer('tmr-ssl-3', fmtDate(addDays(exp, -3)) + ' 08:00', 'deadline.reminder.due', 'ssl-cert-expiry', 'TLS expiry: 3 days before'); }
+      case 'ticket.created': return armTimer(`tmr-${d.ticket_id}`, timeNow().slice(0, 11) + pad2((new Date().getHours() + 4) % 24) + ':' + pad2(new Date().getMinutes()), 'deadline.reminder.due', d.ticket_id, `ticket ${d.ticket_id}: first-response SLA 4 h`);
+      default: return 'recorded';
+    }
+  },
+  'agent-orchestrator'(ev) {
+    const d = ev.data;
+    if (ev.type === 'task.created') {
+      const t = state.tasks.find(x => x.id === d.task_id); if (!t) return 'task not found';
+      if ((t.type === 'threshold' || t.type === 'pattern') && !t.trace) { buildTrace(t); emit('agent.step.completed', { subject: t.id, key: t.id, actor: 'agent:monitoring', source: 'agent-orchestrator', data: { task_id: t.id, steps: t.trace.steps.length, playbook: getRule(t.ruleId).playbook }, idem: `steps:${t.id}` }); return `workflow started: playbook ${getRule(t.ruleId).playbook}, ${t.trace.steps.length} steps, now waiting on approval.decided`; }
+      return `workflow started for ${t.id}: ${t.type === 'time' ? 'reminder playbook, waiting on task.acknowledged with escalation timer' : t.type === 'state' ? 'follow-up playbook' : 'generic triage'}`;
+    }
+    if (ev.type === 'approval.decided') return d.decision === 'approved' ? `workflow for ${d.task_id || 'task'} resumed; executed ${d.tool}; task resolved` : `workflow for ${d.task_id || 'task'} resumed; correction recorded; autonomy for ${d.tool} demoted one level`;
+    if (ev.type === 'task.acknowledged') return 'escalation timer cancelled';
+    return 'noted in workflow history';
+  },
+  notifier(ev) {
+    const d = ev.data; const role = d.owner_role || d.approver_role; const p = role && PEOPLE.find(x => x.role === role);
+    if (ev.type === 'approval.requested') return `approval card posted to ${p ? p.channel : role} (one message, updated in place)`;
+    if (ev.type === 'task.created') return `message posted to ${p ? p.channel : '#ops'}; quiet hours respected`;
+    return 'notification rendered';
+  },
+  'knowledge-indexer'(ev) { return `re-indexed ${ev.data.document_id || ev.subject} incrementally (${ev.data.chunks || '?'} chunks), ACL stamped`; },
+  'metrics-projection'(ev) { return 'read model updated'; },
+  'learning-loop'(ev) { return ev.data.decision === 'rejected' ? 'correction counted; (playbook, tool) autonomy demoted' : 'approval counted toward promotion'; },
+  'liveness-monitor'(ev) { return `heartbeat from ${ev.data.producer}; next expected in ${ev.data.interval_s || 60} s`; },
+  'audit-sink'(ev) { return 'appended'; },
+  reconciler(ev) { return `${ev.data.date}: compared ERP, CMS and deadlines with projections; 0 corrections`; },
+};
+let liveTimer = null;
+function stopLive() { if (liveTimer) clearInterval(liveTimer); liveTimer = null; if (state && state.bus) state.bus.live = false; }
+function startLive() {
+  stopLive(); state.bus.live = true;
+  const pool = [
+    () => emit('erp.invoice.posted', { subject: 'INV-2026-' + (1000 + Math.floor(Math.random() * 900)), actor: 'erp-outbox', data: { invoice_id: 'INV-2026-' + (1000 + Math.floor(Math.random() * 900)), customer: ['Horváth Kft.', 'Nordlicht GmbH', 'Alpha Retail'][Math.floor(Math.random() * 3)], amount: 100 + Math.floor(Math.random() * 3000), due_date: dayStr(14) } }),
+    () => { const id = 'SO-' + (10270 + Math.floor(Math.random() * 30)); const stuck = Math.random() < 0.25; emit('erp.order.status_changed', { subject: id, actor: 'erp-cdc', data: { order_id: id, customer: 'Web shop', status: stuck ? 'awaiting_payment' : ['paid', 'in_fulfilment', 'shipped'][Math.floor(Math.random() * 3)], amount: 50 + Math.floor(Math.random() * 900), days_in_status: stuck ? 8 + Math.floor(Math.random() * 6) : 0 } }); },
+    () => emit('ticket.created', { subject: 'WEB-' + (440 + Math.floor(Math.random() * 60)), actor: 'webhook:jira', data: { ticket_id: 'WEB-' + (440 + Math.floor(Math.random() * 60)), summary: 'Customer question', priority: 'normal' } }),
+    () => emit('producer.heartbeat', { subject: 'search-console-collector', actor: 'search-console-collector', data: { producer: 'search-console-collector', interval_s: 60 }, idem: 'hb:' + Date.now() }),
+    () => emit('kb.document.changed', { subject: 'cms-release-process', actor: 'connector:confluence', data: { document_id: 'cms-release-process', change: 'modified', source: 'confluence', chunks: 3 }, idem: 'kb:' + Date.now() }),
+    () => emit('cms.page.published', { subject: '/blog/' + ['autumn-update', 'erp-tips', 'pricing-faq'][Math.floor(Math.random() * 3)], actor: 'cms-outbox', data: { path: '/blog/autumn-update', revision: 5000 + Math.floor(Math.random() * 100), changed_fields: ['content'], by: 'm.varga' }, idem: 'cms:' + Date.now() }),
+  ];
+  liveTimer = setInterval(() => { pool[Math.floor(Math.random() * pool.length)](); if (state.ui.view === 'events' || state.ui.view === 'overview') render(); else { renderNav(); save(); } }, 2800);
+}
+
 // ---------- shared view helpers
 const NAV = [
-  ['overview', 'Overview'], ['kb', 'Knowledge base'], ['rules', 'Rules'], ['triggers', 'Triggers'], ['tools', 'Tools'], ['playbooks', 'Playbooks'], ['lab', 'Test lab'], ['approvals', 'Approvals & audit'],
+  ['overview', 'Overview'], ['kb', 'Knowledge base'], ['rules', 'Rules'], ['events', 'Events'], ['tools', 'Tools'], ['playbooks', 'Playbooks'], ['lab', 'Test lab'], ['approvals', 'Approvals & audit'],
 ];
 const sevPill = s => `<span class="pill ${s === 'critical' || s === 'high' ? 'crit' : s === 'medium' ? 'warn' : 'info'}">${esc(s)}</span>`;
 const statusPill = s => `<span class="pill ${s === 'active' ? 'ok' : s === 'shadow' ? 'info' : s === 'paused' ? 'warn' : s === 'ok' ? 'ok' : s === 'warn' ? 'warn' : ''}">${esc(s)}</span>`;
-const typePill = t => `<span class="pill flat ${t === 'threshold' ? 'warn' : t === 'time' ? 'info' : t === 'state' ? 'acc' : ''}">${esc(t)}</span>`;
+const typePill = t => `<span class="pill flat ${t === 'threshold' ? 'warn' : t === 'time' ? 'info' : t === 'state' ? 'acc' : t === 'pattern' ? 'crit' : ''}">${esc(t)}</span>`;
 const tabs = (items, cur, action) => `<div class="tabs">${items.map(([k, l]) => `<button type="button" class="${cur === k ? 'on' : ''}" data-action="${action}" data-tab="${k}">${l}</button>`).join('')}</div>`;
 const kv = obj => `<dl class="kv">${Object.entries(obj).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
 const json = o => `<pre class="yaml">${esc(JSON.stringify(o, null, 2))}</pre>`;
@@ -893,6 +1135,7 @@ function viewOverview() {
     <div class="tile"><span class="lab">Rules</span><span class="val">${act}</span><span class="sub">active · ${sh} in shadow · ${state.rules.filter(r => r.status === 'draft').length} draft</span></div>
     <div class="tile"><span class="lab">Knowledge</span><span class="val">${state.docs.length}</span><span class="sub">documents · ${chunks} chunks indexed</span></div>
     <div class="tile ${state.gaps.length ? 'warn' : 'ok'}"><span class="lab">Knowledge gaps</span><span class="val">${state.gaps.length}</span><span class="sub">unanswered questions</span></div>
+    <div class="tile ${state.bus.dlq.filter(x => !x.replayed).length ? 'crit' : 'ok'}" data-action="nav" data-view="events" style="cursor:pointer"><span class="lab">Event bus</span><span class="val">${state.bus.stream.length}</span><span class="sub">events this session · ${state.bus.dlq.filter(x => !x.replayed).length} dead-lettered · ${state.bus.live ? 'live feed on' : 'consumer lag 0'}</span></div>
     <div class="tile ${healthy < TOOLS.length ? 'warn' : 'ok'}"><span class="lab">Tools healthy</span><span class="val">${healthy}/${TOOLS.length}</span><span class="sub">last contract test 02:30</span></div>
   </div>
   <div class="grid2">
@@ -1014,7 +1257,7 @@ function viewRules() {
   const f = state.ui.ruleFilter; const list = state.rules.filter(r => f === 'all' || r.type === f || r.status === f);
   const r = getRule(state.ui.ruleId) || list[0];
   return `<div class="page-h"><div><h1>Rules</h1><p>Deterministic, reviewable definitions of when the assistant must look, what counts as abnormal, who is told, and what it may do. The language model never decides these.</p></div>
-    <div class="actions"><select class="btn" id="rule-filter" data-change="rule-filter">${[['all', 'All rules'], ['threshold', 'Threshold / anomaly'], ['time', 'Time / deadline'], ['state', 'State'], ['policy', 'Policy'], ['active', 'Active'], ['shadow', 'Shadow'], ['draft', 'Draft']].map(([k, l]) => `<option value="${k}" ${f === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn primary" data-action="new-rule">New rule</button></div></div>
+    <div class="actions"><select class="btn" id="rule-filter" data-change="rule-filter">${[['all', 'All rules'], ['pattern', 'Event pattern'], ['threshold', 'Threshold / anomaly'], ['time', 'Time / deadline'], ['state', 'State'], ['policy', 'Policy'], ['active', 'Active'], ['shadow', 'Shadow'], ['draft', 'Draft']].map(([k, l]) => `<option value="${k}" ${f === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn primary" data-action="new-rule">New rule</button></div></div>
   <div class="split">
     <div class="panel"><div class="pb tight"><div class="list">${list.map(x => `<div class="item ${r && r.id === x.id ? 'sel' : ''}" data-action="open-rule" data-id="${x.id}"><span class="stripe ${x.severity || ''}"></span><div><b class="mono">${esc(x.id)}</b><span class="meta">${esc(x.description)}</span><span class="meta">${typePill(x.type)} ${statusPill(x.status)} ${x.stats ? `· fired ${x.stats.fired30}× / 30 d${x.stats.fired30 ? `, ${Math.round(100 * x.stats.dismissed / Math.max(1, x.stats.acked + x.stats.dismissed))} % dismissed` : ''}` : ''}</span></div><div></div></div>`).join('')}</div></div></div>
     ${r ? ruleDetail(r) : '<div class="panel"><div class="empty">Select a rule.</div></div>'}
@@ -1028,9 +1271,10 @@ function ruleDetail(r) {
   if (r.type === 'threshold') form = `${F('Signal', 'signal', 'select', ['search_console.clicks', 'search_console.impressions'])}${F('Pages in scope (comma separated)', 'scope_pages', 'text')}${F('Baseline window (days)', 'baseline.window_days', 'number', 'min="14" step="7"')}${F('Fire when ratio to baseline is below', 'condition.ratio_lt', 'number', 'min="0.1" max="1" step="0.05"')}${F('Consecutive days', 'condition.consecutive', 'number', 'min="1" max="7"')}${F('Ignore when baseline below', 'condition.min_baseline', 'number', 'min="0"')}${F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical'])}${F('Owner role', 'owner_role', 'select', PEOPLE.map(p => p.role))}${F('Cooldown (days)', 'cooldown_days', 'number', 'min="0"')}${F('Playbook', 'playbook', 'select', PLAYBOOKS.map(p => p.id))}`;
   else if (r.type === 'time') form = `${r.due.date ? F('Due date', 'due.date', 'date') : F('Due day of month', 'due.day_of_month', 'number', 'min="1" max="28"')}${F('Lead times, days before due (comma separated)', 'lead_times_days', 'text')}${F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical'])}${F('Owner role', 'owner_role', 'select', PEOPLE.map(p => p.role))}${F('Requires acknowledgement', 'requires_ack', 'select', ['true', 'false'])}`;
   else if (r.type === 'state') form = `${F('Entity', 'entity', 'select', ['orders', 'tickets'])}${F('Where status =', 'where.status', 'text')}${r.entity === 'orders' ? F('Days in status greater than', 'condition.days_in_status_gt', 'number', 'min="1"') : F('Hours open greater than', 'condition.hours_open_gt', 'number', 'min="1"')}${F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical'])}${F('Owner role', 'owner_role', 'select', PEOPLE.map(p => p.role))}`;
+  else if (r.type === 'pattern') form = `<div class="field wide"><label>Event pattern (evaluated by the rule engine as a stream consumer)</label>${kv({ 'fires on': `<code>${esc(r.pattern.on)}</code>`, where: `path in <code>${esc(r.pattern.where.path_in)}</code> and changed fields include ${r.pattern.where.changed_fields_any.map(x => `<code>${esc(x)}</code>`).join(', ')}`, 'preceded by': `<code>${esc(r.pattern.after)}</code> within ${esc(r.pattern.within)} on the same ${esc(r.pattern.key)}`, latency: 'seconds after the source event; no schedule involved' })}</div>${F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical'])}${F('Owner role', 'owner_role', 'select', PEOPLE.map(p => p.role))}${F('Playbook', 'playbook', 'select', PLAYBOOKS.map(p => p.id))}`;
   else form = `<div class="field wide"><label>Decision table (evaluated at tool-call time by the guardrail layer)</label><div class="tw"><table class="tbl"><thead><tr><th>When</th><th>Decision</th><th>Approver</th></tr></thead><tbody>${r.decisions.map(d => `<tr><td class="mono small">${esc(d.when)}</td><td>${d.allow === 'auto' ? '<span class="pill ok">auto</span>' : d.allow === 'approve' ? '<span class="pill warn">approve</span>' : '<span class="pill crit">forbid</span>'}</td><td class="mono small">${esc(d.approver_role || '–')}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `<div class="panel"><div class="ph"><div><h2 class="mono">${esc(r.id)}</h2><span class="hint">${typePill(r.type)} ${statusPill(r.status)} · owner ${esc(r.owner)} · review ${esc(r.review_date || '–')}</span></div>
-      <div class="row">${next ? `<button class="btn sm" data-action="rule-status" data-id="${r.id}" data-to="${next[0]}">${next[1]}</button>` : ''}${r.type !== 'policy' ? `<button class="btn sm primary" data-action="simulate-rule" data-id="${r.id}">Simulate on history</button>` : `<button class="btn sm primary" data-action="nav" data-view="tools" data-tool="${esc(r.tool.replace('.*', '.remove_noindex'))}">Test with a tool call</button>`}<button class="btn sm danger" data-action="delete-rule" data-id="${r.id}">Delete</button></div></div>
+      <div class="row">${next ? `<button class="btn sm" data-action="rule-status" data-id="${r.id}" data-to="${next[0]}">${next[1]}</button>` : ''}${r.type === 'pattern' ? `<button class="btn sm primary" data-action="nav" data-view="events" data-evtab="publish">Publish a matching event</button>` : r.type !== 'policy' ? `<button class="btn sm primary" data-action="simulate-rule" data-id="${r.id}">Simulate on history</button>` : `<button class="btn sm primary" data-action="nav" data-view="tools" data-tool="${esc(r.tool.replace('.*', '.remove_noindex'))}">Test with a tool call</button>`}<button class="btn sm danger" data-action="delete-rule" data-id="${r.id}">Delete</button></div></div>
     <div class="pb stack">
       <div class="field wide"><label for="rf-description">Description</label><input id="rf-description" data-rule-field="description" data-kind="text" value="${esc(r.description)}"></div>
       <div class="form">${form}</div>
@@ -1058,29 +1302,72 @@ function simPanel(r, sim) {
   return `<div class="panel" style="background:var(--bg)"><div class="ph"><h3>Records matching right now</h3></div><div class="pb">${sim.records.length ? json(sim.records) : '<div class="hint">No record matches.</div>'}</div></div>`;
 }
 
-function viewTriggers() {
-  const t = state.ui.trigTab; const T = state.triggers;
-  const head = `<div class="page-h"><div><h1>Triggers</h1><p>What sets the assistant in motion: schedules, events pushed by systems, and pollers for systems that cannot push. Every firing is persisted so a run can be replayed.</p></div></div>
-  ${tabs([['schedules', 'Schedules'], ['webhooks', 'Webhooks'], ['pollers', 'Pollers'], ['log', `Event log (${state.events.length})`]], t, 'trig-tab')}`;
-  if (t === 'schedules') return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Schedule</th><th>Cron</th><th>Collects</th><th>Evaluates rules</th><th>Last run</th><th>Next</th><th></th></tr></thead><tbody>
-    ${T.schedules.map(s => `<tr><td><b>${esc(s.name)}</b><br>${statusPill(s.status)}</td><td class="mono small nowrap">${esc(s.cron)}<br><span class="hint">${esc(s.human)}</span></td><td class="small">${s.runs.map(x => `<span class="tag">${esc(x)}</span>`).join(' ') || '–'}</td><td class="small">${s.rules.map(x => `<a href="#rules" data-action="open-rule" data-id="${x}" class="mono">${esc(x)}</a>`).join(', ') || '–'}</td><td class="nowrap mono small">${esc(s.lastRun)}</td><td class="nowrap mono small">${esc(s.next)}</td><td><button class="btn sm" data-action="run-schedule" data-id="${s.id}">Run now</button></td></tr>`).join('')}
-  </tbody></table></div></div></div>
-  <div class="panel"><div class="ph"><h2>Add a schedule</h2></div><div class="pb"><form data-form="add-schedule" class="form">
-    <div class="field"><label for="sc-name">Name</label><input id="sc-name" name="name" required placeholder="Weekly stock check"></div>
-    <div class="field"><label for="sc-cron">Cron (5 fields)</label><input id="sc-cron" name="cron" class="mono" value="0 6 * * 1"></div>
-    <div class="field"><label for="sc-rules">Rules to evaluate</label><select id="sc-rules" name="rules" multiple size="3">${state.rules.filter(r => r.type !== 'policy').map(r => `<option>${r.id}</option>`).join('')}</select></div>
-    <div class="field" style="justify-content:flex-end"><button class="btn primary" type="submit">Create schedule</button></div></form></div></div>`;
-  if (t === 'webhooks') return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Event</th><th>Endpoint</th><th>Source</th><th>Last received</th><th>30 d</th><th>Handled by</th><th></th></tr></thead><tbody>
-    ${T.webhooks.map(w => `<tr><td class="mono"><b>${esc(w.event)}</b></td><td class="mono small">${esc(w.path)}</td><td>${esc(w.source)}</td><td class="nowrap mono small">${esc(w.last)}</td><td class="num">${w.count30}</td><td class="small">${esc(w.handles)}</td><td><button class="btn sm" data-action="test-webhook" data-id="${w.id}">Send test event</button></td></tr>`).join('')}
-  </tbody></table></div></div></div>
-  <div class="hint">Webhook deliveries are signed by the source system and verified before they enter the event bus. A test event goes through the same path with a <code>test: true</code> flag.</div>`;
-  if (t === 'pollers') return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Poller</th><th>Tool</th><th>Every</th><th>Last poll</th><th>Feeds rules</th><th>Status</th><th></th></tr></thead><tbody>
-    ${T.pollers.map(p => `<tr><td><b>${esc(p.name)}</b></td><td class="mono small">${esc(p.tool)}</td><td>${esc(p.every)}</td><td class="nowrap mono small">${esc(p.last)}</td><td class="small">${p.rules.map(x => `<a href="#rules" data-action="open-rule" data-id="${x}" class="mono">${esc(x)}</a>`).join(', ') || '–'}</td><td>${statusPill(p.status)}</td><td><button class="btn sm" data-action="run-poller" data-id="${p.id}">Poll now</button></td></tr>`).join('')}
-  </tbody></table></div></div></div>
-  <div class="hint">A poller reads through a read-only tool, diffs the result against the last snapshot and emits change events. Pollers are the fallback for systems without webhooks.</div>`;
-  return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>When</th><th>Kind</th><th>What</th><th>Detail</th></tr></thead><tbody>
-    ${state.events.map(e => `<tr><td class="nowrap mono">${esc(e.at)}</td><td><span class="tag">${esc(e.kind)}</span></td><td>${esc(e.what)}</td><td class="muted">${esc(e.detail)}</td></tr>`).join('')}
-  </tbody></table></div></div></div>`;
+function evPill(c) { return `<span class="pill ${c.result === 'ok' ? 'ok' : c.result === 'failed' ? 'crit' : ''}" title="${esc(c.note)}">${esc(c.consumer)}</span>`; }
+function viewEvents() {
+  const t = state.ui.evTab; const bus = state.bus; const dl = bus.dlq.filter(x => !x.replayed);
+  const head = `<div class="page-h"><div><h1>Events</h1><p>The bus that sets the assistant in motion. Company systems, the timer service, collectors and people publish events; the rule engine, the agent, the notifier and the indexer consume them within seconds. Nothing here waits for a schedule.</p></div>
+    <div class="actions"><button class="btn ${bus.live ? 'danger' : ''}" data-action="toggle-live">${bus.live ? 'Stop live feed' : 'Start live feed'}</button><button class="btn primary" data-action="ev-tab" data-tab="publish">Publish an event</button></div></div>
+    ${tabs([['stream', `Live stream (${bus.stream.length})`], ['publish', 'Publish'], ['catalogue', 'Catalogue'], ['subscriptions', 'Consumers'], ['producers', 'Producers & timers'], ['dlq', `Dead letters (${dl.length})`]], t, 'ev-tab')}`;
+  if (t === 'stream') {
+    const f = (state.ui.evFilter || '').toLowerCase(); const rows = bus.stream.filter(e => !f || e.type.includes(f) || (e.subject || '').toLowerCase().includes(f) || e.correlation === state.ui.evFilter).sort((a, b) => b.seq - a.seq);
+    return head + `<div class="panel"><div class="ph"><div class="row"><input id="ev-filter" class="btn" style="cursor:text;font-weight:400;min-width:240px" placeholder="filter by type, subject or correlation id" value="${esc(state.ui.evFilter || '')}" data-change="ev-filter"><label class="chk"><input type="checkbox" id="ev-fail" data-change="ev-fail" ${bus.failNext ? 'checked' : ''}> make the rule engine crash on the next event</label></div><span class="hint">${bus.live ? 'live feed: one event every 3 s' : 'newest first'}</span></div><div class="pb tight">${rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th>#</th><th>Time</th><th>Type</th><th>Subject</th><th>Consumers</th><th>Latency</th><th>Status</th></tr></thead><tbody>
+      ${rows.map(e => `<tr class="click ${state.ui.evOpen === e.id ? 'sel' : ''}" data-action="ev-open" data-id="${e.id}"><td class="num mono">${e.seq}</td><td class="nowrap mono small">${esc(e.time.slice(11))}</td><td class="mono"><b>${esc(e.type)}</b>${e.causation ? '<br><span class="hint">caused by ' + esc(e.causation.slice(-6)) + '</span>' : ''}</td><td class="mono small">${esc(e.subject)}</td><td>${e.consumers.map(evPill).join(' ')}</td><td class="num">${e.latency} ms</td><td>${e.status === 'delivered' ? '<span class="pill ok">delivered</span>' : e.status === 'duplicate' ? '<span class="pill">duplicate</span>' : '<span class="pill crit">dead-lettered</span>'}</td></tr>
+      ${state.ui.evOpen === e.id ? `<tr><td colspan="7" style="background:var(--bg)"><div class="grid2"><div><div class="hint" style="margin-bottom:4px">Envelope (CloudEvents)</div>${json({ specversion: '1.0', id: e.id, type: e.type, source: e.source, subject: e.subject, time: e.time, idempotencykey: e.idem, partitionkey: e.key, correlationid: e.correlation, causationid: e.causation, actor: e.actor, data: e.data })}</div><div><div class="hint" style="margin-bottom:4px">What each consumer did</div>${e.consumers.map(c => `<div class="hit"><b class="mono small">${esc(c.consumer)}</b> ${c.result === 'ok' ? '<span class="pill ok">ack</span>' : c.result === 'failed' ? '<span class="pill crit">nak ×5</span>' : '<span class="pill">skip</span>'}<div class="small">${esc(c.note)}</div></div>`).join('')}<div class="row" style="margin-top:8px"><button class="btn sm" data-action="ev-chain" data-corr="${e.correlation}">Show causal chain</button></div></div></div></td></tr>` : ''}`).join('')}
+    </tbody></table></div>` : '<div class="empty">No events yet. Publish one, start the live feed, or run a scenario in the test lab.</div>'}</div></div>`;
+  }
+  if (t === 'publish') {
+    const type = state.ui.pubType; const topic = TOPICS.find(x => x.type === type) || {}; const subs = SUBSCRIPTIONS.filter(s => s.filters.some(f => matchSubject(f, type))).map(s => s.consumer);
+    const last = state.pubResult; const chain = last ? bus.stream.filter(e => e.correlation === last.correlation).sort((a, b) => a.seq - b.seq) : [];
+    return head + `<div class="grid2"><div class="panel"><div class="ph"><h2>Publish a test event</h2><span class="hint">goes through ingress validation, idempotency and every subscribed consumer</span></div><div class="pb"><form data-form="publish" class="form">
+      <div class="field wide"><label for="pub-type">Type</label><select id="pub-type" name="type" data-change="pub-type">${TOPICS.filter(x => x.tier !== 'operational' && x.tier !== 'derived').map(x => `<option ${x.type === type ? 'selected' : ''}>${x.type}</option>`).join('')}</select></div>
+      <div class="field"><label for="pub-subject">Subject / partition key</label><input id="pub-subject" name="subject" class="mono" value="${esc(String(SAMPLE_DATA[type] ? (SAMPLE_DATA[type].path || SAMPLE_DATA[type].invoice_id || SAMPLE_DATA[type].order_id || SAMPLE_DATA[type].site || SAMPLE_DATA[type].host || SAMPLE_DATA[type].ticket_id || SAMPLE_DATA[type].document_id || SAMPLE_DATA[type].deadline_id || SAMPLE_DATA[type].date || SAMPLE_DATA[type].producer || '') : ''))}"></div>
+      <div class="field"><label for="pub-idem">Idempotency key (publish twice to see the duplicate dropped)</label><input id="pub-idem" name="idem" class="mono" value="${esc(type + ':' + (topic.key || 'key') + ':' + Math.floor(Date.now() / 1000))}"></div>
+      <div class="field wide"><label for="pub-data">Data (JSON)</label><textarea id="pub-data" name="data" class="mono" style="min-height:150px">${esc(JSON.stringify(SAMPLE_DATA[type] || {}, null, 2))}</textarea></div>
+      <div class="field wide row"><button class="btn primary" type="submit">Publish</button><span class="hint">producer: ${esc(topic.producer || 'console')} · consumers: ${subs.map(x => `<code>${x}</code>`).join(' ')}</span></div></form></div></div>
+      <div class="panel"><div class="ph"><h2>What happened</h2>${last ? `<span class="hint">correlation ${esc(last.correlation.slice(-8))} · ${chain.length} event(s) in the chain</span>` : ''}</div><div class="pb">${last ? `<div class="trace">${chain.map((e, i) => `<div class="step"><span class="n ${e.status === 'dead-lettered' ? 'act' : 'ok'}">${i + 1}</span><div><div class="call">${esc(e.type)} <span class="hint">${esc(e.subject)} · +${e.latency} ms · by ${esc(e.actor)}</span></div>${e.consumers.map(c => `<div class="res">${evPill(c)} <span class="small">${esc(c.note)}</span></div>`).join('')}</div></div>`).join('')}</div>
+        ${(() => { const tk = state.tasks.find(x => chain.some(e => e.type === 'task.created' && e.data.task_id === x.id)); return tk ? `<div class="row" style="margin-top:10px"><span class="pill crit">task ${esc(tk.id)}</span><span class="small">${esc(tk.title)}</span>${tk.page ? `<button class="btn sm" data-action="open-task" data-id="${tk.id}">Open agent run</button>` : ''}</div>` : ''; })()}
+        ${state.approvals.some(a => a.status === 'pending' && chain.some(e => e.type === 'approval.requested' && e.data.approval_id === a.id)) ? `<div class="row" style="margin-top:8px"><button class="btn sm" data-action="nav" data-view="approvals">An approval is waiting</button></div>` : ''}` : `<div class="hint">Try the default: <code>cms.page.published</code> with <code>robots: noindex,follow</code> on <code>/pricing</code>. The crawler re-crawls, publishes <code>crawl.page.changed</code>, the pattern rule fires, the orchestrator runs the playbook and asks for approval. Then publish it again with the same idempotency key to see the duplicate dropped.</div>`}</div></div></div>`;
+  }
+  if (t === 'catalogue') {
+    const count = type => bus.stream.filter(e => e.type === type).length;
+    return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Type</th><th>Tier</th><th>Producer</th><th>Key (ordering)</th><th>Retention</th><th>Consumers</th><th>Seen</th></tr></thead><tbody>
+      ${TOPICS.map(x => `<tr><td class="mono"><b>${esc(x.type)}</b></td><td><span class="pill flat ${x.tier === 'domain' ? 'acc' : x.tier === 'timer' ? 'info' : x.tier === 'derived' ? 'warn' : ''}">${esc(x.tier)}</span></td><td class="small">${esc(x.producer)}</td><td class="mono small">${esc(x.key)}</td><td class="nowrap">${esc(x.retention)}</td><td class="small">${x.consumers.map(c => `<span class="tag">${esc(c)}</span>`).join(' ')}</td><td class="num">${count(x.type)}</td></tr>`).join('')}
+    </tbody></table></div></div></div>
+    <div class="hint">Naming: <code>domain.entity.past-tense</code>. Schemas are JSON Schema files in git; producers validate on publish. Domain events are facts from company systems, timer events come from the timer service, derived events are rule-engine conclusions, operational events are what the assistant itself did.</div>`;
+  }
+  if (t === 'subscriptions') {
+    const stats = c => { const mine = bus.stream.flatMap(e => e.consumers.filter(x => x.consumer === c)); return { n: mine.length, failed: mine.filter(x => x.result === 'failed').length }; };
+    return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Consumer</th><th>Subscribed subjects</th><th>Role</th><th>Delivery</th><th>Processed</th></tr></thead><tbody>
+      ${SUBSCRIPTIONS.map(s => { const st = stats(s.consumer); return `<tr><td class="mono"><b>${esc(s.consumer)}</b><br>${s.durable ? '<span class="pill ok">durable</span>' : ''}</td><td class="small">${s.filters.map(f => `<code>${esc(f)}</code>`).join(' ')}</td><td class="small">${esc(s.role)}</td><td class="small nowrap">ack ${esc(s.ack)}<br>max deliver ${s.maxDeliver} → DLQ</td><td class="num">${st.n}${st.failed ? `<br><span class="pill crit">${st.failed} failed</span>` : ''}</td></tr>`; }).join('')}
+    </tbody></table></div></div></div>
+    <div class="hint">Every consumer is a durable pull subscription with explicit acks, an idempotency table and per-key ordering. A consumer that is down simply resumes from its stored position; nothing is lost while it is away.</div>`;
+  }
+  if (t === 'producers') {
+    const T = state.triggers;
+    return head + `<div class="stack">
+      <div class="panel"><div class="ph"><h2>Timer service · armed timers</h2><span class="hint">durable timers created by events; each fires as an event</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Fires at</th><th>Emits</th><th>Key</th><th>Why</th><th></th></tr></thead><tbody>
+        ${bus.timers.map(x => `<tr><td class="nowrap mono">${esc(x.fireAt)}</td><td class="mono small">${esc(x.type)}</td><td class="mono small">${esc(x.key)}</td><td class="small">${esc(x.reason)}</td><td><button class="btn sm" data-action="fire-timer" data-id="${x.id}">Fire now</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No timers armed.</td></tr>'}
+      </tbody></table></div></div></div>
+      <div class="grid2">
+      <div class="panel"><div class="ph"><h2>Webhook ingress</h2><span class="hint">signed deliveries, deduplicated, normalised, published</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Source</th><th>Endpoint</th><th>Publishes</th><th>Last</th><th></th></tr></thead><tbody>
+        ${T.webhooks.map(w => `<tr><td>${esc(w.source)}</td><td class="mono small">${esc(w.path)}</td><td class="mono small">${esc(w.event)}</td><td class="nowrap mono small">${esc(w.last)}</td><td><button class="btn sm" data-action="test-webhook" data-id="${w.id}">Send test</button></td></tr>`).join('')}
+      </tbody></table></div></div></div>
+      <div class="panel"><div class="ph"><h2>Outbox and CDC connectors</h2><span class="hint">in-house systems</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>System</th><th>Mechanism</th><th>Publishes</th><th>Lag</th><th></th></tr></thead><tbody>
+        <tr><td>ERP</td><td class="small">transactional outbox → relay</td><td class="mono small">erp.invoice.*</td><td class="num">0.4 s</td><td><button class="btn sm" data-action="nav" data-view="events" data-evtab="publish" data-pubtype="erp.invoice.posted">Emit</button></td></tr>
+        <tr><td>ERP orders table</td><td class="small">CDC (Debezium) → translator</td><td class="mono small">erp.order.status_changed</td><td class="num">1.1 s</td><td><button class="btn sm" data-action="nav" data-view="events" data-evtab="publish" data-pubtype="erp.order.status_changed">Emit</button></td></tr>
+        <tr><td>CMS</td><td class="small">transactional outbox → relay</td><td class="mono small">cms.page.published</td><td class="num">0.3 s</td><td><button class="btn sm" data-action="nav" data-view="events" data-evtab="publish" data-pubtype="cms.page.published">Emit</button></td></tr>
+      </tbody></table></div></div></div></div>
+      <div class="panel"><div class="ph"><h2>Collectors and reconciliation (the periodic remainder)</h2><span class="hint">sources without push, and correctness sweeps that publish only differences</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Job</th><th>Triggered by</th><th>Publishes</th><th>Last run</th><th></th></tr></thead><tbody>
+        <tr><td><b>Search Console collector</b></td><td class="mono small">day.closed</td><td class="mono small">seo.metric.collected (changes only)</td><td class="nowrap mono small">${esc(T.schedules[0].lastRun)}</td><td><button class="btn sm" data-action="emit-day-closed">Emit day.closed</button></td></tr>
+        <tr><td><b>Full key-page crawl</b></td><td class="small">daily 07:30 (reconciliation)</td><td class="mono small">crawl.page.changed</td><td class="nowrap mono small">${esc(T.schedules[1].lastRun)}</td><td><button class="btn sm" data-action="run-schedule" data-id="daily-page-diff">Run</button></td></tr>
+        <tr><td><b>Deadline reconciliation</b></td><td class="small">weekdays 08:00; compares entity store with armed timers</td><td class="mono small">deadline.reminder.due (missed ones)</td><td class="nowrap mono small">${esc(T.schedules[2].lastRun)}</td><td><button class="btn sm" data-action="run-schedule" data-id="deadline-sweep">Run</button></td></tr>
+        <tr><td><b>Knowledge source reconciliation</b></td><td class="small">nightly 02:00 full listing diff</td><td class="mono small">kb.document.changed</td><td class="nowrap mono small">${esc(T.schedules[3].lastRun)}</td><td><button class="btn sm" data-action="run-schedule" data-id="kb-reconcile">Run</button></td></tr>
+      </tbody></table></div></div></div></div>`;
+  }
+  return head + `<div class="panel"><div class="ph"><h2>Dead-letter queue</h2><span class="hint">events a consumer failed to process after 5 deliveries; nothing is dropped silently</span></div><div class="pb tight">${bus.dlq.length ? `<div class="tw"><table class="tbl"><thead><tr><th>When</th><th>Event</th><th>Consumer</th><th>Error</th><th>Attempts</th><th></th></tr></thead><tbody>
+    ${bus.dlq.map(x => `<tr><td class="nowrap mono small">${esc(x.at.slice(11))}</td><td class="mono"><b>${esc(x.type)}</b><br><span class="hint">${esc(x.subject)} · #${x.seq}</span></td><td class="mono small">${esc(x.consumer)}</td><td class="small">${esc(x.error)}</td><td class="num">${x.attempts}</td><td>${x.replayed ? '<span class="pill ok">replayed</span>' : `<button class="btn sm primary" data-action="replay-dlq" data-id="${x.id}">Replay</button>`}</td></tr>`).join('')}
+  </tbody></table></div>` : '<div class="empty">Empty. Tick "make the rule engine crash on the next event" in the stream view and publish something to see one arrive.</div>'}</div></div>
+  <div class="hint">Target: the queue is empty at the end of every business day. A growing queue pages the owner of the consumer; a replay re-delivers the original event with the same idempotency key, so consumers that did succeed skip it.</div>`;
 }
 
 function viewTools() {
@@ -1117,7 +1404,8 @@ function viewLab() {
   const head = `<div class="page-h"><div><h1>Test lab</h1><p>Exercise the whole chain without touching real systems: inject a signal, watch the rules fire, read the agent's trace, approve or reject its proposal, and check the knowledge base against the golden question set.</p></div></div>
   ${tabs([['scenario', 'Scenario runner'], ['chat', 'Talk to the assistant'], ['evals', 'Golden questions']], t, 'lab-tab')}`;
   if (t === 'scenario') {
-    const task = state.tasks.find(x => x.page === sc.page && x.status !== 'done' && x.type === 'threshold') || state.tasks.find(x => x.page === sc.page && x.type === 'threshold' && x.trace);
+    const isSeo = x => x.page === sc.page && (x.type === 'threshold' || x.type === 'pattern');
+    const task = state.tasks.find(x => isSeo(x) && x.status !== 'done') || state.tasks.find(x => isSeo(x) && x.trace);
     const rule = getRule('seo-organic-drop'); const ev = evalThreshold(rule, state.metrics[sc.page], 'clicks');
     const ap = task && task.trace && task.trace.approvalId ? state.approvals.find(a => a.id === task.trace.approvalId) : null;
     return head + `<div class="grid2">
@@ -1126,13 +1414,14 @@ function viewLab() {
         <div class="field"><label for="sc-cause">Hidden cause (what the agent should find)</label><select id="sc-cause" name="cause">${[['noindex', 'noindex tag added by a CMS deployment'], ['title', 'title and meta replaced (CTR drop)'], ['server', 'server returns 503 errors'], ['unknown', 'nothing on our side (algorithm / seasonality)']].map(([k, l]) => `<option value="${k}" ${k === sc.cause ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><label for="sc-drop">Drop in clicks: <output id="sc-drop-out">${sc.drop}</output> %</label><div class="range"><input id="sc-drop" name="drop" type="range" min="5" max="90" step="5" value="${sc.drop}" data-input="range-out" data-out="sc-drop-out"></div></div>
         <div class="field"><label for="sc-days">Days it has lasted</label><input id="sc-days" name="days" type="number" min="1" max="10" value="${sc.days}"></div>
-        <div class="field wide row"><button class="btn primary" type="submit">Apply scenario and run the daily collection</button><button class="btn" type="button" data-action="reset-scenario">Reset metrics</button></div></form></div></div>
+        <div class="field wide row"><button class="btn primary" type="submit">Apply scenario and run the daily collection</button><button class="btn" type="button" data-action="reset-scenario">Reset metrics</button></div></form>
+        <div class="msg" style="margin-top:12px"><div class="from">Push path (no waiting for traffic to fall)</div><span class="small">The same regression is caught in seconds when the CMS publishes an event: <code>cms.page.published</code> → crawler re-crawls → <code>crawl.page.changed</code> → pattern rule → task.</span><div class="row" style="margin-top:8px"><button class="btn sm" type="button" data-action="nav" data-view="events" data-evtab="publish" data-pubtype="cms.page.published">Publish the CMS event instead</button></div></div></div></div>
       <div class="panel"><div class="ph"><h2>2 · Rule evaluation</h2><span class="hint">seo-organic-drop on ${esc(sc.page)}</span></div><div class="pb stack">
         ${chartSVG(ev.points.slice(-35), 'clicks on ' + sc.page)}
         ${state.lastEval ? `<div class="tw"><table class="tbl"><thead><tr><th>Rule</th><th>Page</th><th>Ratio</th><th>Result</th></tr></thead><tbody>${state.lastEval.filter(x => x.page === sc.page || x.fired).map(x => `<tr><td class="mono small">${esc(x.rule.id)}<br>${statusPill(x.rule.status)}</td><td class="mono small">${esc(x.page)}</td><td class="num">${pct(x.ratio)}</td><td>${x.fired ? (x.rule.status === 'active' ? '<span class="pill crit">fired → task</span>' : '<span class="pill info">would fire (shadow)</span>') : '<span class="pill ok">normal</span>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">Apply a scenario to evaluate the threshold rules against it. The chart shows the signal, its same-weekday median baseline and the threshold line.</div>'}
       </div></div>
     </div>
-    ${task ? `<div class="panel"><div class="ph"><div><h2>3 · Agent run · ${esc(task.id)}</h2><span class="hint">playbook ${esc(rule.playbook)} · ${esc(task.trace ? task.trace.builtAt : '')}</span></div><div class="row">${sevPill(task.severity)}<span class="pill ${task.status === 'done' ? 'ok' : task.status === 'acked' ? 'info' : 'warn'}">${task.status}</span></div></div><div class="pb"><div class="grid2">
+    ${task ? `<div class="panel"><div class="ph"><div><h2>3 · Agent run · ${esc(task.id)}</h2><span class="hint">${esc(task.ruleId)} · playbook ${esc(getRule(task.ruleId)?.playbook || rule.playbook)} · ${esc(task.trace ? task.trace.builtAt : '')}</span></div><div class="row">${sevPill(task.severity)}<span class="pill ${task.status === 'done' ? 'ok' : task.status === 'acked' ? 'info' : 'warn'}">${task.status}</span></div></div><div class="pb"><div class="grid2">
       <div class="stack"><h3>Trace</h3><div class="trace">${(task.trace ? task.trace.steps : []).map((s, i) => `<div class="step"><span class="n ${s.act ? 'act' : 'ok'}">${i + 1}</span><div><div class="call">${esc(s.call)}</div><div class="res">${esc(s.res)}</div><div class="note">${esc(s.note)}</div></div></div>`).join('')}</div></div>
       <div class="stack"><h3>Alert the owner receives</h3><div class="msg"><div class="from">Slack · ${esc(PEOPLE.find(p => p.role === task.owner)?.channel || '#marketing')}</div><pre style="font-family:var(--font-ui);font-size:13px">${esc(task.trace ? task.trace.alert : '')}</pre></div>
         <h3>Proposed action</h3>${ap ? approvalCard(ap) : task.trace && task.trace.ticket ? `<div class="msg"><div class="from">Executed (policy: auto)</div>Ticket <b>${esc(task.trace.ticket)}</b> created and linked to the task.</div>` : ''}
@@ -1167,7 +1456,7 @@ function viewApprovals() {
   </tbody></table></div></div></div></div>`;
 }
 
-const VIEWS = { overview: viewOverview, kb: viewKB, rules: viewRules, triggers: viewTriggers, tools: viewTools, playbooks: viewPlaybooks, lab: viewLab, approvals: viewApprovals };
+const VIEWS = { overview: viewOverview, kb: viewKB, rules: viewRules, events: viewEvents, triggers: viewEvents, tools: viewTools, playbooks: viewPlaybooks, lab: viewLab, approvals: viewApprovals };
 function render() {
   renderNav();
   $('#main').innerHTML = (VIEWS[state.ui.view] || viewOverview)();
@@ -1177,10 +1466,17 @@ function render() {
 
 // ---------- actions
 const A = {
-  nav(d) { state.ui.view = d.view; if (d.tool) state.ui.toolName = d.tool; try { history.replaceState(null, '', '#' + d.view); } catch (e) { } render(); window.scrollTo(0, 0); },
-  'reset-demo'() { try { localStorage.removeItem(LS_KEY); } catch (e) { } state = initialState(); render(); toast('Demo data reset'); },
+  nav(d) { state.ui.view = d.view; if (d.tool) state.ui.toolName = d.tool; if (d.evtab) state.ui.evTab = d.evtab; if (d.pubtype) state.ui.pubType = d.pubtype; try { history.replaceState(null, '', '#' + d.view); } catch (e) { } render(); window.scrollTo(0, 0); },
+  'reset-demo'() { try { localStorage.removeItem(LS_KEY); } catch (e) { } stopLive(); state = initialState(); render(); toast('Demo data reset'); },
   'kb-tab'(d) { state.ui.kbTab = d.tab; render(); },
   'trig-tab'(d) { state.ui.trigTab = d.tab; render(); },
+  'ev-tab'(d) { state.ui.evTab = d.tab; render(); },
+  'ev-open'(d) { state.ui.evOpen = state.ui.evOpen === d.id ? null : d.id; render(); },
+  'ev-chain'(d) { state.ui.evFilter = d.corr; state.ui.evOpen = null; render(); },
+  'toggle-live'() { if (state.bus.live) { stopLive(); toast('Live feed stopped'); } else { startLive(); toast('Live feed started: one event every 3 seconds'); } render(); },
+  'fire-timer'(d) { const t = state.bus.timers.find(x => x.id === d.id); if (!t) return; state.bus.timers = state.bus.timers.filter(x => x.id !== d.id); emit(t.type, { subject: t.key, key: t.key, actor: 'timer-service', source: 'timer-service', data: t.type === 'day.closed' ? { date: t.key } : { deadline_id: t.key, reason: t.reason }, idem: `timer:${t.id}:${Date.now()}` }); state.ui.evTab = 'stream'; render(); toast(`${t.type} emitted for ${t.key}`); },
+  'emit-day-closed'() { emit('day.closed', { subject: dayStr(-1), key: dayStr(-1), actor: 'timer-service', source: 'timer-service', data: { date: dayStr(-1) }, idem: 'day:' + Date.now() }); state.triggers.schedules[0].lastRun = nowStr(); state.ui.evTab = 'stream'; render(); toast('day.closed emitted; collectors ran'); },
+  'replay-dlq'(d) { const x = state.bus.dlq.find(y => y.id === d.id); const ev = state.bus.stream.find(e => e.id === x.eventId); if (!ev) return; try { const note = HANDLERS[x.consumer](ev); const c = ev.consumers.find(k => k.consumer === x.consumer); if (c) { c.result = 'ok'; c.note = 'replayed: ' + (note || 'ok'); } ev.status = 'delivered'; x.replayed = true; audit('console user', 'dlq.replayed', `${ev.type} #${ev.seq} → ${x.consumer}`); addEvent('dlq', `${ev.type} replayed`, x.consumer); toast('Replayed successfully'); } catch (err) { x.attempts++; x.error = err.message; toast('Replay failed again'); } render(); },
   'lab-tab'(d) { state.ui.labTab = d.tab; render(); },
   'open-doc'(d) { state.ui.view = 'kb'; state.ui.kbTab = 'documents'; state.ui.docId = d.id; render(); },
   'kb-ask-q'(d) { state.ui.view = 'kb'; state.ui.kbTab = 'ask'; doSearch(d.q, ''); },
@@ -1193,18 +1489,18 @@ const A = {
   'new-rule'() { const id = 'new-rule-' + (state.rules.filter(r => r.id.startsWith('new-rule')).length + 1); state.rules.unshift({ id, type: 'threshold', status: 'draft', owner: 'marketing', owner_role: 'seo_owner', severity: 'medium', review_date: dayStr(365), description: 'Describe what this rule watches.', signal: 'search_console.clicks', scope_pages: [...KEY_PAGES], baseline: { method: 'same_weekday_median', window_days: 28 }, condition: { ratio_lt: 0.7, consecutive: 2, min_baseline: 20 }, cooldown_days: 3, playbook: 'seo-drop-triage', allowed_actions: ['slack.post_message'], escalation: [], stats: { fired30: 0, acked: 0, dismissed: 0 } }); state.ui.ruleId = id; state.ui.ruleFilter = 'all'; audit('console user', 'rule.created', id); render(); },
   'rule-status'(d) { const r = getRule(d.id); const from = r.status; r.status = d.to; audit('console user', 'rule.status', `${r.id}: ${from} → ${d.to}`); addEvent('rule', `${r.id} ${d.to}`, `status changed by console user`); render(); toast(`${r.id} is now ${d.to}`); },
   'delete-rule'(d) { state.rules = state.rules.filter(r => r.id !== d.id); audit('console user', 'rule.deleted', d.id); state.ui.ruleId = state.rules[0] && state.rules[0].id; render(); toast('Rule deleted'); },
-  'simulate-rule'(d) { const r = getRule(d.id); if (r.type === 'threshold') { const byPage = {}; for (const p of r.scope_pages) if (state.metrics[p]) byPage[p] = evalThreshold(r, state.metrics[p], thresholdField(r)); state.lastRuleSim = { ruleId: r.id, page: r.scope_pages.find(p => state.metrics[p]), byPage }; } else if (r.type === 'time') state.lastRuleSim = { ruleId: r.id, ts: timeStatus(r) }; else state.lastRuleSim = { ruleId: r.id, records: evalState(r) }; audit('console user', 'rule.simulated', r.id); render(); },
+  'simulate-rule'(d) { const r = getRule(d.id); if (r.type === 'pattern') { state.lastRuleSim = { ruleId: r.id, records: state.bus.stream.filter(e => e.type === r.pattern.on).slice(0, 10) }; } else if (r.type === 'threshold') { const byPage = {}; for (const p of r.scope_pages) if (state.metrics[p]) byPage[p] = evalThreshold(r, state.metrics[p], thresholdField(r)); state.lastRuleSim = { ruleId: r.id, page: r.scope_pages.find(p => state.metrics[p]), byPage }; } else if (r.type === 'time') state.lastRuleSim = { ruleId: r.id, ts: timeStatus(r) }; else state.lastRuleSim = { ruleId: r.id, records: evalState(r) }; audit('console user', 'rule.simulated', r.id); render(); },
   'run-schedule'(d) { const s = state.triggers.schedules.find(x => x.id === d.id); const res = evaluateRules(s.rules, s.name); s.lastRun = nowStr(); if (s.id === 'kb-reconcile') { s.status = 'ok'; addEvent('schedule', 'kb-reconcile ran', 'all sources checked; 0 changed'); } render(); toast(`${s.name}: ${res.filter(x => x.fired).length} condition(s) met`); },
   'run-poller'(d) { const p = state.triggers.pollers.find(x => x.id === d.id); p.last = nowStr(); const res = evaluateRules(p.rules, p.name); addEvent('poller', `${p.name} polled`, `${p.tool}: snapshot diffed`); render(); toast(`${p.name} polled: ${res.filter(x => x.fired).length} condition(s) met`); },
-  'test-webhook'(d) { const w = state.triggers.webhooks.find(x => x.id === d.id); w.last = nowStr(); w.count30++; if (w.id === 'cms-deployment') { state.deploys.unshift({ system: 'cms', at: nowStr(), by: 'console test', note: 'Test deployment (webhook test)' }); addEvent('webhook', 'cms.deployment (test)', 'page diff queued for 4 key pages'); } else if (w.id === 'jira-issue-created') addEvent('webhook', 'ticketing.issue_created (test)', 'SLA timer started; rule ticket-first-response-sla is in draft, nothing sent'); else addEvent('webhook', 'erp.invoice_posted (test)', 'reminder check scheduled for +7 days'); audit('console user', 'webhook.test', w.event); render(); toast(`Test event ${w.event} delivered`); },
+  'test-webhook'(d) { const w = state.triggers.webhooks.find(x => x.id === d.id); w.last = nowStr(); w.count30++; const map = { 'cms-deployment': ['cms.page.published', { path: '/blog/seo-checklist', revision: 5100, changed_fields: ['content'], by: 'webhook test' }], 'jira-issue-created': ['ticket.created', { ticket_id: 'WEB-499', summary: 'Webhook test issue', priority: 'low' }], 'erp-invoice-posted': ['erp.invoice.posted', { invoice_id: 'INV-TEST-' + Math.floor(Math.random() * 900), customer: 'Test customer', amount: 100, due_date: dayStr(14) }] }; const [type, data] = map[w.id]; emit(type, { subject: data.path || data.ticket_id || data.invoice_id, actor: 'webhook:' + w.source.toLowerCase(), source: 'webhook-ingress/' + w.source.toLowerCase(), data, idem: `wh:${w.id}:${Date.now()}` }); state.ui.evTab = 'stream'; render(); toast(`Test delivery accepted (signature verified) → ${type}`); },
   'open-tool'(d) { state.ui.toolName = d.name; state.toolResult = null; render(); },
   'open-playbook'(d) { state.ui.playbookId = d.id; render(); },
-  'open-task'(d) { const t = state.tasks.find(x => x.id === d.id); if (t.type === 'threshold') { state.scenario.page = t.page; state.ui.view = 'lab'; state.ui.labTab = 'scenario'; if (!t.trace) buildTrace(t); } else { state.ui.view = 'rules'; state.ui.ruleId = t.ruleId; } render(); },
-  'ack-task'(d) { const t = state.tasks.find(x => x.id === d.id); t.status = 'acked'; audit('console user', 'task.acked', t.id); render(); toast('Task acknowledged'); },
+  'open-task'(d) { const t = state.tasks.find(x => x.id === d.id); if (t.type === 'threshold' || t.type === 'pattern') { state.scenario.page = t.page; state.ui.view = 'lab'; state.ui.labTab = 'scenario'; if (!t.trace) buildTrace(t); } else { state.ui.view = 'rules'; state.ui.ruleId = t.ruleId; } render(); },
+  'ack-task'(d) { const t = state.tasks.find(x => x.id === d.id); t.status = 'acked'; audit('console user', 'task.acked', t.id); emit('task.acknowledged', { subject: t.id, key: t.id, actor: 'user:console', data: { task_id: t.id }, idem: `ack:${t.id}` }); render(); toast('Task acknowledged'); },
   'reset-scenario'() { resetScenario(); render(); toast('Metrics restored'); },
   'chat-q'(d) { doChat(d.q); },
-  approve(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'approved'; a.decidedAt = nowStr(); a.result = runTool(a.tool, { ...a.args, dry_run: false }); audit('console user', 'approval.approved', `${a.id} ${a.tool} → executed`); addEvent('approval', `${a.tool} approved`, `executed by the assistant after approval`); if (a.taskId) { const t = state.tasks.find(x => x.id === a.taskId); if (t) { t.status = 'done'; audit('agent:monitoring', 'task.done', `${t.id} resolved by ${a.tool}`); } } render(); toast('Approved and executed'); },
-  reject(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'rejected'; a.decidedAt = nowStr(); audit('console user', 'approval.rejected', `${a.id} ${a.tool}`); addEvent('approval', `${a.tool} rejected`, 'the agent will record the correction and lower autonomy for this action'); render(); toast('Rejected. The correction is recorded for the learning loop.'); },
+  approve(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'approved'; a.decidedAt = nowStr(); a.result = runTool(a.tool, { ...a.args, dry_run: false }); if (a.tool === 'cms.remove_noindex' || a.tool === 'cms.set_page_meta') delete state.pageFacts[a.args.path]; audit('console user', 'approval.approved', `${a.id} ${a.tool} → executed`); emit('approval.decided', { subject: a.id, key: a.id, actor: 'user:console', data: { approval_id: a.id, decision: 'approved', tool: a.tool, task_id: a.taskId }, idem: `decided:${a.id}` }); addEvent('approval', `${a.tool} approved`, `executed by the assistant after approval`); if (a.taskId) { const t = state.tasks.find(x => x.id === a.taskId); if (t) { t.status = 'done'; audit('agent:monitoring', 'task.done', `${t.id} resolved by ${a.tool}`); } } render(); toast('Approved and executed'); },
+  reject(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'rejected'; a.decidedAt = nowStr(); audit('console user', 'approval.rejected', `${a.id} ${a.tool}`); emit('approval.decided', { subject: a.id, key: a.id, actor: 'user:console', data: { approval_id: a.id, decision: 'rejected', tool: a.tool, task_id: a.taskId }, idem: `decided:${a.id}` }); addEvent('approval', `${a.tool} rejected`, 'the agent will record the correction and lower autonomy for this action'); render(); toast('Rejected. The correction is recorded for the learning loop.'); },
   'run-evals'() { const rows = GOLDEN.map(g => { const h = kbSearch(g.q)[0]; const expected = state.docs.find(d => d.id === g.doc); return { q: g.q, expected: expected ? expected.title : g.doc, got: h && h.doc.title, section: h && h.chunk.heading, score: h && h.score, pass: !!h && h.doc.id === g.doc }; }); state.evalRun = { rows, pass: rows.filter(r => r.pass).length, at: nowStr() }; audit('console user', 'eval.run', `golden set: ${state.evalRun.pass}/${GOLDEN.length}`); render(); },
 };
 function doSearch(q, dept) { state.kbQuery = q; const terms = expandQuery(q); const hits = kbSearch(q, { department: dept || undefined }); state.kbResults = { hits, terms, department: dept }; if (!hits.length && q.trim() && !state.gaps.some(g => g.q === q)) state.gaps.unshift({ q, asked: 1, by: 'console user', at: TODAY }); audit('console user', 'kb.search', `"${q}" → ${hits.length} hits`); render(); }
@@ -1220,7 +1516,7 @@ const FORMS = {
       const doc = { id, title: fd.get('title'), type: fd.get('type'), dept: fd.get('dept'), source: 'manual', updated: TODAY, owner: fd.get('owner'), acl: String(fd.get('acl') || 'all-staff').split(',').map(s => s.trim()).filter(Boolean), reviewEvery: 365, url: fd.get('url') || null,
         chunks: chunks.map((c, i) => ({ heading: (c.match(/^#+\s*(.+)$/m) || [])[1] || `${fd.get('title')} › part ${i + 1}`, text: c.replace(/^#+\s*.+$/m, '').trim() })), extracted: extractObligations(text) };
       state.addResult = { stage: 0, doc }; render();
-      const tick = () => { state.addResult.stage++; if (state.addResult.stage >= 7) { state.docs.push(doc); const src = state.sources.find(s => s.id === 'manual'); src.lastSync = nowStr(); addEvent('kb', 'Document indexed', `${doc.title} (${doc.chunks.length} chunks, ${doc.extracted.length} obligations found)`); audit('console user', 'kb.ingest', `${doc.id}: ${doc.chunks.length} chunks, ACL ${doc.acl.join(',')}`); render(); toast(`${doc.title} is now searchable`); } else { render(); setTimeout(tick, 260); } };
+      const tick = () => { state.addResult.stage++; if (state.addResult.stage >= 7) { state.docs.push(doc); const src = state.sources.find(s => s.id === 'manual'); src.lastSync = nowStr(); addEvent('kb', 'Document indexed', `${doc.title} (${doc.chunks.length} chunks, ${doc.extracted.length} obligations found)`); emit('kb.document.changed', { subject: doc.id, key: doc.id, actor: 'user:console', data: { document_id: doc.id, title: doc.title, source: 'manual', chunks: doc.chunks.length }, idem: `kbdoc:${doc.id}` }); audit('console user', 'kb.ingest', `${doc.id}: ${doc.chunks.length} chunks, ACL ${doc.acl.join(',')}`); render(); toast(`${doc.title} is now searchable`); } else { render(); setTimeout(tick, 260); } };
       setTimeout(tick, 200);
     };
     if (file && file.size) { const fr = new FileReader(); fr.onload = () => go(String(fr.result)); fr.readAsText(file); } else go(fd.get('text') || '');
@@ -1238,6 +1534,7 @@ const FORMS = {
     else out = callTool(name, args, 'console user');
     state.toolResult = { tool: name, ...out, ms: Math.max(12, Math.round(performance.now() - t0 + 40 + Math.random() * 120)) }; render();
   },
+  publish(fd) { let data; try { data = JSON.parse(fd.get('data') || '{}'); } catch (e) { toast('Data is not valid JSON: ' + e.message); return; } const type = fd.get('type'); const ev = emit(type, { subject: fd.get('subject'), key: fd.get('subject'), actor: 'user:console', source: 'console', data, idem: fd.get('idem') || undefined }); state.pubResult = { correlation: ev.correlation, id: ev.id }; state.ui.pubType = type; render(); toast(ev.status === 'duplicate' ? 'Duplicate: dropped by the idempotency check' : ev.status === 'dead-lettered' ? 'Published; one consumer failed and the event went to the dead-letter queue' : `Published; ${ev.consumers.length} consumer(s) processed it in ${ev.latency} ms`); },
   scenario(fd) { state.scenario = { page: fd.get('page'), cause: fd.get('cause'), drop: +fd.get('drop'), days: +fd.get('days'), applied: state.scenario.applied }; const { task } = applyScenario(); render(); toast(task ? `Rule fired; agent trace ready for ${task.page}` : 'No active rule fired with these numbers'); },
   chat(fd, form) { const q = (fd.get('q') || '').trim(); if (!q) return; form.reset(); doChat(q); },
 };
@@ -1255,6 +1552,9 @@ document.addEventListener('submit', e => {
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.change === 'rule-filter') { state.ui.ruleFilter = el.value; render(); return; }
+  if (el.dataset.change === 'ev-filter') { state.ui.evFilter = el.value; render(); return; }
+  if (el.dataset.change === 'ev-fail') { state.bus.failNext = el.checked; return; }
+  if (el.dataset.change === 'pub-type') { state.ui.pubType = el.value; state.pubResult = null; render(); return; }
   if (el.dataset.change === 'sim-page') { if (state.lastRuleSim) state.lastRuleSim.page = el.value; render(); return; }
   if (el.dataset.ruleField) {
     const r = getRule(state.ui.ruleId); if (!r) return;

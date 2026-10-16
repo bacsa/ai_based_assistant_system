@@ -24,6 +24,7 @@ systems goes through a **tool layer** that you build once per system.
 | 5 | [docs/05-tool-system.md](docs/05-tool-system.md) | *What is the tool system, how do I expose in-house software to the assistant?* |
 | 6 | [docs/06-learning-loop.md](docs/06-learning-loop.md) | *How does the assistant learn the company flows?* |
 | 7 | [docs/07-roadmap.md](docs/07-roadmap.md) | *In what order do we build it, and how do we know it works?* |
+| 9 | [docs/09-event-messaging.md](docs/09-event-messaging.md) | *How does it react in real time?* Event bus, producers, consumers, reliability rules, technology choice. |
 | 8 | [docs/08-web-console.md](docs/08-web-console.md) | *What does the admin console look like?* Screen map, data model, API. |
 | – | [console/index.html](console/index.html) | Clickable prototype of the console with working in-browser engines (open the file in a browser). |
 | – | [examples/](examples/) | Concrete rule, tool and playbook definitions you can copy. |
@@ -41,7 +42,7 @@ Claude running in a loop) surrounded by four things it cannot do without:
 4. a **memory and learning loop** – logs of what happened, human feedback, and a process
    for promoting observed patterns into new rules and playbooks.
 
-A **scheduler / event bus** triggers the agent (cron, webhooks, polling), a
+A **durable event bus** carries every change from the company systems (webhooks, outbox, change data capture, a timer service for deadlines) to the rule engine and the agent within seconds; cron survives only for reconciliation. A
 **guardrail layer** decides which actions need human approval, and an **audit log**
 records every decision. Channels (Slack/Teams/email/web) are just thin front-ends.
 
@@ -51,6 +52,8 @@ records every decision. Channels (Slack/Teams/email/web) are just thin front-end
   rules that a human can read and audit, not in a prompt. The LLM interprets context,
   drafts messages and chooses between tools – it never decides on its own whether it is
   allowed to write to the ERP.
+- **Events for latency, reconciliation for correctness.** Every change is an event on a
+  durable bus; consumers are idempotent; a few periodic jobs only compare and correct.
 - **Read before write.** Every integration starts read-only. Write tools are added one
   at a time, each with a dry-run mode and an approval policy.
 - **Measure first.** Phase 0 is a measurement phase. You cannot alert on "SEO is

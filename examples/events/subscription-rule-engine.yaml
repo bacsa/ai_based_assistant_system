@@ -1,0 +1,34 @@
+# A durable consumer definition for the rule engine.
+consumer: rule-engine
+stream: company-events
+durable: true                      # position stored server-side; survives restarts
+filter_subjects:
+  - "erp.>"
+  - "cms.>"
+  - "crawl.>"
+  - "seo.metric.>"
+  - "uptime.>"
+  - "tls.>"
+  - "ticket.>"
+  - "deadline.>"
+delivery: pull                     # consumer controls pace (backpressure)
+batch: 50
+ack_policy: explicit
+ack_wait: 30s
+max_deliver: 5
+backoff: [5s, 30s, 2m, 5m, 10m]
+dead_letter: dlq.rule-engine
+idempotency:
+  store: postgres.rule_engine_processed   # (idempotencykey, processed_at), TTL 30d
+ordering: per partitionkey
+state:
+  store: postgres.rule_state              # per (rule_id, key): baseline, counters, last fired
+emits:
+  - seo.anomaly.detected
+  - seo.anomaly.cleared
+  - order.stuck.detected
+  - task.created
+shadow:
+  enabled: true                           # a candidate rule version consumes the same stream
+  subject_prefix: shadow.                 # and emits here for comparison, never to notifier
+heartbeat: 60s

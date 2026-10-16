@@ -1,0 +1,28 @@
+{
+  "specversion": "1.0",
+  "id": "01J9Z4K7Q2R6M8W3V1T5N0P9X2",
+  "type": "cms.page.published",
+  "source": "/cms/prod",
+  "subject": "/pricing",
+  "time": "2026-10-13T10:05:12Z",
+  "datacontenttype": "application/json",
+  "dataschema": "https://schemas.example.internal/cms.page.published/v2.json",
+
+  "idempotencykey": "cms:page:/pricing:rev:4812",
+  "partitionkey": "/pricing",
+  "correlationid": "01J9Z4K7Q2R6M8W3V1T5N0P9X2",
+  "causationid": null,
+  "actor": "user:k.nagy",
+  "pii": "none",
+  "tenant": "example-hu",
+
+  "data": {
+    "path": "/pricing",
+    "revision": 4812,
+    "previous_revision": 4801,
+    "deployment_id": "dep-2210",
+    "changed_fields": ["template", "robots"],
+    "robots": "noindex,follow",
+    "title": "Pricing – plans for every team size | Example"
+  }
+}

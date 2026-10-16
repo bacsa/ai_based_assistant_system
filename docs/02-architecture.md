@@ -10,10 +10,10 @@ flowchart TB
         WEB[Web UI / admin console]
     end
 
-    subgraph Triggers["Scheduler & event bus"]
-        CRON[Cron schedules]
-        HOOK[Webhooks from systems]
-        POLL[Pollers / collectors]
+    subgraph Triggers["Event bus (durable streams)"]
+        HOOK[Webhooks · outbox · CDC<br/>from company systems]
+        TM[Timer service<br/>deadlines, SLAs, day.closed]
+        POLL[Collectors<br/>change events from pull-only sources]
     end
 
     subgraph Core["Agent runtime (orchestrator)"]
@@ -51,7 +51,7 @@ flowchart TB
 
     Channels --> ROUTER
     Triggers --> Rules
-    Rules -- "rule fired → task" --> ROUTER
+    Rules -- "derived events:<br/>anomaly.detected, task.created" --> ROUTER
     ROUTER --> AGENT
     AGENT <--> PLAYBOOKS
     AGENT <--> KB
@@ -80,17 +80,21 @@ Slack/Teams bot, an email address the assistant reads and writes, and a small we
 console for admins (rule editor, approval queue, audit log viewer, KB health). Channels
 only carry messages; no logic lives here.
 
-### Scheduler and event bus
+### Event bus (the backbone)
 
-Three ways work enters the system:
+Work enters the system as **events on a durable bus**, not as cron ticks. Producers are
+the company systems (transactional outbox or change data capture for in-house apps,
+webhooks for SaaS), a **timer service** that turns deadlines and SLAs into
+`deadline.reminder.due` events, collectors for sources that cannot push (they publish
+*changes only*), and people (a button click in Slack is an event). Consumers are the
+rule engine, the agent orchestrator, the notifier, the knowledge indexer, the metrics
+and entity projections and the audit sink. Delivery is at-least-once with idempotent
+consumers, per-key ordering, retries, a dead-letter queue and replay.
 
-1. **Cron** – "every day 07:00 collect yesterday's Search Console data", "every Monday run the deadline sweep".
-2. **Webhooks** – systems that can push events (new ticket, order status change, deployment finished).
-3. **Pollers** – for systems without events: query the API/DB on an interval, diff against the last snapshot, emit *change events*.
-
-Implementation: a job queue (e.g. Temporal, Celery/RQ, BullMQ, or n8n for a low-code
-start) plus a message topic per event type. Every event is persisted so the agent can be
-re-run on it.
+Periodic jobs remain only for **reconciliation** (compare source with projection and
+publish corrections) and for sources without push. The full design, the event
+envelope, the catalogue, the reliability rules and the technology choice (NATS
+JetStream + Temporal recommended) are in [doc 09](09-event-messaging.md).
 
 ### Rule engine
 
@@ -162,11 +166,17 @@ typed functions: `erp.get_invoice`, `erp.list_overdue_invoices`,
 
 **Scenario: the SEO example.**
 
-1. 07:00 cron → poller calls `seo.get_search_console_series(last 2 days)` and
-   `analytics.get_sessions(by landing page)`; writes rows to the metrics store.
-2. Rule engine evaluates `seo-organic-drop` ([example](../examples/rules/seo-organic-drop.yaml)):
+0. **Push path (seconds).** The CMS publishes `cms.page.published` for `/pricing` from
+   its outbox. The crawler collector re-crawls the page at once and publishes
+   `crawl.page.changed` with `robots: index,follow → noindex,follow`. The pattern rule
+   `seo-key-page-meta-regression` fires immediately and the agent run below starts
+   before any traffic is lost. The steps that follow describe the slower, metric-based
+   safety net that catches whatever has no push signal.
+1. The timer service emits `day.closed`; the Search Console collector fetches the new
+   day, diffs it with the last snapshot and publishes `seo.metric.collected` per page.
+2. Rule engine consumes it and evaluates `seo-organic-drop` ([example](../examples/rules/seo-organic-drop.yaml)):
    clicks on `/pricing` are 42 % below the 28-day same-weekday median and the drop
-   persists for 2 days → rule fires, severity *high*, owner *marketing*.
+   persists for 2 days → `seo.anomaly.detected` and `task.created`, severity *high*, owner *marketing*.
 3. Router creates a task for the *Monitoring* agent with the rule's context attached.
 4. The agent follows the `seo-drop-triage` playbook: calls `crawler.diff_page('/pricing')`
    (finds a `noindex` tag added 3 days ago), checks `deploy.list_recent()` (a CMS
@@ -183,8 +193,9 @@ typed functions: `erp.get_invoice`, `erp.list_overdue_invoices`,
 
 **Scenario: a deadline.**
 
-1. Deadline sweep (Monday 08:00) reads `deadlines` from the entity store.
-2. Time rule: `VAT return due in 10 days, lead time 10 days, status not started` → fires.
+1. When the deadline was registered, the timer service armed durable timers at
+   due − 10 d, − 3 d and − 1 d. The first one fires and emits `deadline.reminder.due`.
+2. Time rule: `VAT return due in 10 days, status not started` → `task.created`.
 3. Agent checks the KB for the VAT procedure, checks the ERP for whether the period is
    closed (`erp.get_period_status`), and sends the owner a message with the checklist, the
    current blockers, and a button "mark started".
@@ -207,7 +218,9 @@ typed functions: `erp.get_invoice`, `erp.list_overdue_invoices`,
 |---------|--------|-------------|
 | Agent framework | Claude Agent SDK (Python/TS) | LangGraph, Pydantic AI |
 | Tools protocol | MCP | plain function calling |
-| Workflow / scheduler | Temporal | Celery beat, n8n, Airflow |
+| Event bus | NATS JetStream | Redpanda/Kafka, RabbitMQ, cloud pub/sub |
+| Durable workflows / timers | Temporal | Restate, Step Functions |
+| CDC / outbox relay | Debezium | Redpanda Connect |
 | Relational + metrics | Postgres (+ Timescale) | ClickHouse |
 | Vector search | Qdrant or pgvector | Weaviate, Elasticsearch |
 | Document parsing | Unstructured / Docling + OCR | Azure Document Intelligence |

@@ -1,0 +1,166 @@
+# Event catalogue. One entry per event type. Rendered by the console, validated in CI.
+# type:        <domain>.<entity>.<past-tense verb>
+# key:         partition key (ordering guarantee is per key)
+# retention:   how long the stream keeps the events (replay window)
+# schema:      JSON Schema in schemas/<type>/vN.json
+defaults:
+  delivery: at-least-once
+  ack_window: 30s
+  max_deliver: 5
+  backoff: [5s, 30s, 2m, 5m, 10m]
+  dead_letter: dlq.<type>
+
+domain_events:
+  - type: erp.invoice.posted
+    producer: erp-outbox
+    key: invoice_id
+    retention: 90d
+    schema: v1
+    consumers: [rule-engine, metrics-projection, timer-service, audit-sink]
+  - type: erp.invoice.paid
+    producer: erp-outbox
+    key: invoice_id
+    retention: 90d
+    consumers: [rule-engine, metrics-projection, timer-service, audit-sink]   # timer-service cancels reminder timers
+  - type: erp.order.status_changed
+    producer: erp-cdc (Debezium → translator)
+    key: order_id
+    retention: 30d
+    consumers: [rule-engine, metrics-projection, audit-sink]
+  - type: cms.page.published
+    producer: cms-outbox
+    key: path
+    retention: 30d
+    consumers: [rule-engine, crawler-collector, audit-sink]
+  - type: crawl.page.changed
+    producer: crawler-collector
+    key: path
+    retention: 30d
+    consumers: [rule-engine, audit-sink]
+  - type: seo.metric.collected
+    producer: search-console-collector        # triggered by day.closed; emits changes only
+    key: path
+    retention: 60d
+    consumers: [rule-engine, metrics-projection]
+  - type: uptime.check.failed
+    producer: webhook-ingress/uptime
+    key: site
+    retention: 30d
+    consumers: [rule-engine, audit-sink]
+  - type: tls.certificate.observed
+    producer: tls-collector
+    key: host
+    retention: 400d
+    consumers: [timer-service, rule-engine]
+  - type: ticket.created
+    producer: webhook-ingress/jira
+    key: ticket_id
+    retention: 30d
+    consumers: [rule-engine, timer-service]
+  - type: ticket.resolved
+    producer: webhook-ingress/jira
+    key: ticket_id
+    retention: 30d
+    consumers: [rule-engine, timer-service, knowledge-indexer]
+  - type: kb.document.changed
+    producer: source-connectors (sharepoint, drive, confluence, file-watcher)
+    key: document_id
+    retention: 30d
+    consumers: [knowledge-indexer]
+  - type: message.received
+    producer: inbound-gateway (slack, teams, email)
+    key: conversation_id
+    retention: 30d
+    pii: possible
+    consumers: [agent-orchestrator]
+  - type: producer.heartbeat
+    producer: every producer, every 60s
+    key: producer
+    retention: 2d
+    consumers: [liveness-monitor]
+
+timer_events:
+  - type: day.closed
+    producer: timer-service
+    key: date
+    retention: 7d
+    consumers: [search-console-collector, analytics-collector, reconciler]
+  - type: deadline.reminder.due
+    producer: timer-service
+    key: deadline_id
+    retention: 30d
+    consumers: [rule-engine]
+  - type: deadline.overdue
+    producer: timer-service
+    key: deadline_id
+    retention: 30d
+    consumers: [rule-engine]
+
+derived_events:
+  - type: seo.anomaly.detected
+    producer: rule-engine
+    key: path
+    retention: 30d
+    consumers: [agent-orchestrator, notifier, audit-sink]
+  - type: seo.anomaly.cleared
+    producer: rule-engine
+    key: path
+    retention: 30d
+    consumers: [agent-orchestrator, notifier]
+  - type: order.stuck.detected
+    producer: rule-engine
+    key: order_id
+    retention: 30d
+    consumers: [agent-orchestrator, notifier]
+  - type: producer.silent
+    producer: liveness-monitor
+    key: producer
+    retention: 30d
+    consumers: [notifier, audit-sink]
+  - type: task.created
+    producer: rule-engine
+    key: task_id
+    retention: 90d
+    consumers: [agent-orchestrator, notifier, metrics-projection, audit-sink]
+  - type: task.acknowledged
+    producer: console | slack-buttons
+    key: task_id
+    retention: 90d
+    consumers: [agent-orchestrator, metrics-projection, audit-sink]
+  - type: task.resolved
+    producer: agent-orchestrator | console
+    key: task_id
+    retention: 90d
+    consumers: [notifier, metrics-projection, learning-loop, audit-sink]
+
+operational_events:
+  - type: approval.requested
+    producer: guardrails
+    key: approval_id
+    retention: 90d
+    consumers: [notifier, audit-sink, console-live]
+  - type: approval.decided
+    producer: console | slack-buttons
+    key: approval_id
+    retention: 90d
+    consumers: [agent-orchestrator, learning-loop, audit-sink]   # orchestrator workflows wait on this
+  - type: tool.call.completed
+    producer: tool-gateway
+    key: call_id
+    retention: 30d
+    consumers: [audit-sink, metrics-projection]
+  - type: tool.call.failed
+    producer: tool-gateway
+    key: call_id
+    retention: 30d
+    consumers: [audit-sink, agent-orchestrator, notifier]
+  - type: agent.step.completed
+    producer: agent-orchestrator
+    key: task_id
+    retention: 30d
+    consumers: [audit-sink, console-live]
+  - type: notification.sent
+    producer: notifier
+    key: task_id
+    retention: 30d
+    consumers: [audit-sink, metrics-projection]

@@ -6,7 +6,7 @@ later phase reuses the plumbing of the earlier ones.
 ## Phase 0 – Discovery and baseline (weeks 1–4)
 
 - Run the checklist in [doc 01](01-discovery-checklist.md).
-- Stand up the metrics store and the first pollers for 5–10 signals (SEO + two business
+- Stand up the event bus (NATS JetStream), the webhook ingress and the timer service; then the metrics store and the first collectors for 5–10 signals (SEO + two business
   domains) so baselines start accumulating **now**.
 - Collect the golden document set and the first 50 golden questions.
 - Agree success metrics and the non-functional requirements (hosting, privacy).
@@ -24,7 +24,7 @@ later phase reuses the plumbing of the earlier ones.
 
 ## Phase 2 – Monitoring and reminders (weeks 8–14)
 
-- Rule engine with time, threshold and state rules; first 20–40 rules from the
+- Rule engine as a bus consumer with time, threshold, state and pattern rules; outbox or CDC on the first in-house system; dead-letter queue and replay; first 20–40 rules from the
   deadline and signal inventories; shadow → active.
 - Alert routing, acknowledge/snooze, escalation, cooldowns.
 - Read-only MCP servers for the SEO stack and 1–2 business systems; `seo-drop-triage`
