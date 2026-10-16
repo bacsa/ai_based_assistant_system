@@ -1,0 +1,52 @@
+# Threshold / anomaly rule: organic clicks on a key landing page fell well below normal.
+# Fires a task for the Monitoring agent, which follows the seo-drop-triage playbook.
+id: seo-organic-drop
+version: 1
+type: threshold
+owner: marketing            # who maintains this rule
+review_date: 2027-04-01
+description: >
+  Organic clicks (Google Search Console) on a key landing page are below 70 % of the
+  same-weekday median of the last 28 days, for two consecutive days.
+
+signal: search_console.clicks          # must exist in signals.csv / metrics store
+dimensions: [landing_page]
+scope:
+  landing_page: { in_list: key_pages }  # list maintained in the entity store
+
+baseline:
+  method: same_weekday_median          # alternatives: rolling_median, mad, stl_seasonal
+  window_days: 28
+
+condition:
+  ratio_to_baseline: { lt: 0.70 }
+  consecutive_periods: 2
+  min_baseline_value: 20               # ignore pages that normally get < 20 clicks/day
+
+severity: high
+owner_role: seo_owner                  # resolved through inventory/people.yaml
+cooldown: 3d                           # do not re-fire for the same page within 3 days
+dedupe_key: "{landing_page}"
+
+playbook: seo-drop-triage
+context_tools:                         # pre-fetched and attached to the task
+  - tool: metrics.query
+    args: { signal: search_console.impressions, dimensions: [landing_page], days: 35 }
+  - tool: crawler.diff_page
+    args: { url: "{landing_page}", since: "-7d" }
+  - tool: deploy.list_recent
+    args: { system: cms, days: 7 }
+
+allowed_actions:
+  - tool: slack.post_message           # policy: auto
+  - tool: ticketing.create_issue       # policy: auto
+  - tool: cms.remove_noindex           # policy: approve (seo_owner)
+  - tool: cms.set_page_meta            # policy: approve (seo_owner)
+
+escalation:
+  - after: 24h
+    unacknowledged: true
+    notify_role: marketing_lead
+  - after: 72h
+    unacknowledged: true
+    notify_role: head_of_digital

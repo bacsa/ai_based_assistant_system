@@ -1,0 +1,52 @@
+# Tool specification template.
+# One file per tool. Used to (a) generate the MCP server stub, (b) feed the policy engine,
+# (c) render the tool catalogue in the admin console.
+name: system.verb_object              # e.g. erp.list_overdue_invoices
+version: 1
+server: mcp-erp                       # which MCP server hosts it
+owner: finance                        # business owner who approves changes
+description: >
+  One or two sentences the model reads to decide when to use this tool and what it returns.
+  State units, limits and side effects explicitly.
+
+class: read                           # read | write | communicate | knowledge | meta
+risk: low                             # low | medium | high  (write tools: drives default policy)
+side_effects: none                    # none | creates | updates | deletes | sends
+
+input_schema:                         # JSON Schema
+  type: object
+  required: [min_days]
+  properties:
+    min_days: { type: integer, minimum: 1, default: 30, description: "Overdue by at least this many days" }
+    customer_id: { type: string, description: "Optional filter" }
+    limit: { type: integer, maximum: 200, default: 50 }
+    dry_run: { type: boolean, default: true }    # write tools only; must be honoured
+
+output_schema:
+  type: object
+  properties:
+    items: { type: array, items: { $ref: "#/definitions/Invoice" } }
+    total_count: { type: integer }
+    truncated: { type: boolean }
+
+errors:                               # structured error codes the agent can act on
+  - { code: NOT_FOUND, retryable: false }
+  - { code: UPSTREAM_TIMEOUT, retryable: true }
+  - { code: PERMISSION_DENIED, retryable: false }
+
+auth:
+  mode: service_account               # service_account | on_behalf_of_user
+  credential_ref: vault://erp/assistant-readonly
+  scopes: [invoices:read]
+
+idempotency: not_applicable           # write tools: idempotency_key (required)
+rate_limit: { max_per_minute: 60 }
+timeout_seconds: 20
+
+observability:
+  log_arguments: true
+  mask_fields: []                     # e.g. [iban, email]
+
+tests:
+  contract_test: tests/contract/erp_list_overdue_invoices.py
+  test_instance: https://erp-test.internal

@@ -1,0 +1,27 @@
+# Policy rule: evaluated by the guardrail layer whenever the tool is called.
+id: policy-payment-reminders
+version: 1
+type: policy
+owner: finance
+tool: erp.create_payment_reminder
+environment: production
+
+decision:
+  - when:
+      amount: { lt: 500 }
+      customer.flagged: false
+      reminder_level: { lte: 2 }
+    allow: auto
+  - when:
+      reminder_level: 3
+    allow: approve
+    approver_role: finance_lead
+  - when:
+      customer.flagged: true
+    allow: approve
+    approver_role: finance_lead
+  - otherwise: forbid
+
+dry_run_first: true
+rate_limit: { max_per_day: 200, max_per_customer_per_week: 1 }
+audit: full                            # log arguments and result in full (no PII masking needed here)

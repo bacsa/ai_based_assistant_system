@@ -1,0 +1,62 @@
+name: seo.get_search_console_series
+version: 1
+server: mcp-seo
+owner: marketing
+description: >
+  Returns daily Google Search Console metrics (clicks, impressions, ctr, position) for a
+  site, optionally broken down by landing page, query, country or device. Data has a
+  2-day lag. Max 90 days per call; results beyond 1000 rows are truncated.
+
+class: read
+risk: low
+side_effects: none
+
+input_schema:
+  type: object
+  required: [site, from, to]
+  properties:
+    site: { type: string, description: "Property URL as registered in Search Console" }
+    from: { type: string, format: date }
+    to: { type: string, format: date }
+    dimensions:
+      type: array
+      items: { type: string, enum: [date, page, query, country, device] }
+      default: [date]
+    filters:
+      type: object
+      properties:
+        page_prefix: { type: string }
+        query_contains: { type: string }
+    limit: { type: integer, maximum: 1000, default: 500 }
+
+output_schema:
+  type: object
+  properties:
+    rows:
+      type: array
+      items:
+        type: object
+        properties:
+          date: { type: string }
+          page: { type: string }
+          query: { type: string }
+          clicks: { type: integer }
+          impressions: { type: integer }
+          ctr: { type: number }
+          position: { type: number }
+    truncated: { type: boolean }
+
+errors:
+  - { code: QUOTA_EXCEEDED, retryable: true }
+  - { code: SITE_NOT_FOUND, retryable: false }
+
+auth:
+  mode: service_account
+  credential_ref: vault://google/search-console-sa
+  scopes: ["https://www.googleapis.com/auth/webmasters.readonly"]
+
+rate_limit: { max_per_minute: 30 }
+timeout_seconds: 30
+observability: { log_arguments: true, mask_fields: [] }
+tests:
+  contract_test: tests/contract/seo_search_console.py

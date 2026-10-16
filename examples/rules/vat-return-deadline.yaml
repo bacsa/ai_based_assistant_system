@@ -1,0 +1,33 @@
+# Time rule: a recurring statutory deadline with reminders, acknowledgement and escalation.
+id: vat-return
+version: 1
+type: time
+owner: finance
+review_date: 2027-01-15
+description: Monthly VAT return must be filed by the 20th.
+
+due: { cron: "0 0 20 * *" }            # or a fixed date list, or a field from a system
+lead_times: [10d, 3d, 1d]              # reminders before the due date
+business_days_only: true
+
+owner_role: finance_lead
+requires_ack: true                     # task stays open until acknowledged or marked done
+status_source:                         # optional: let a system tell us it is done
+  tool: erp.get_vat_return_status
+  done_when: { status: filed }
+
+playbook: vat-return-checklist
+context_tools:
+  - tool: erp.get_period_status
+    args: { period: "{previous_month}" }
+  - tool: kb.search
+    args: { query: "VAT return procedure", filters: { department: finance, doc_type: sop } }
+
+escalation:
+  - after: 48h
+    unacknowledged: true
+    notify_role: cfo
+  - at: due - 1d
+    not_done: true
+    notify_role: cfo
+    severity: critical
