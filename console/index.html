@@ -188,6 +188,40 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .empty{padding:22px 14px;text-align:center;color:var(--muted);font-size:13px}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:999px;font-size:13px;z-index:50;max-width:min(90vw,60ch);box-shadow:0 6px 20px rgba(0,0,0,.18)}
 
+.canvas-wrap{overflow:auto;background:
+  linear-gradient(var(--line) 1px, transparent 1px) 0 0/24px 24px,
+  linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/24px 24px, var(--bg);
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);max-height:520px;touch-action:none}
+.canvas-wrap svg{display:block}
+.canvas-tools{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:8px 14px}
+.node{cursor:grab}
+.node .nbox{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+.node.sel .nbox{stroke:var(--accent);stroke-width:2}
+.node .ntitle{font:500 12.5px var(--font-ui);fill:var(--fg)}
+.node .nsub{font:11px var(--font-mono);fill:var(--muted)}
+.node .port{fill:var(--panel);stroke:var(--muted);stroke-width:1.5}
+.node .nbadge{fill:var(--panel-2)} .node .nbadge-t{font:500 10.5px var(--font-mono);fill:var(--muted)}
+.node .ndot.ok{fill:var(--ok)} .node .ndot.failed{fill:var(--crit)} .node .ndot.waiting{fill:var(--warn)}
+.nt-trigger .nstripe{fill:var(--accent)} .nt-filter .nstripe{fill:var(--warn)} .nt-tool .nstripe{fill:var(--info)}
+.nt-agent .nstripe{fill:#7a5fb5} .nt-approval .nstripe{fill:var(--crit)} .nt-notify .nstripe{fill:var(--ok)}
+.nt-wait .nstripe{fill:var(--muted)} .nt-end .nstripe{fill:var(--line)}
+.node.st-ok .nbox{stroke:var(--ok)} .node.st-failed .nbox{stroke:var(--crit);stroke-width:2} .node.st-waiting .nbox{stroke:var(--warn);stroke-width:2;stroke-dasharray:4 3}
+.edge .ehit{fill:none;stroke:transparent;stroke-width:14;cursor:pointer}
+.edge .eline{fill:none;stroke:var(--muted);stroke-width:1.6;opacity:.7}
+.edge.taken .eline{stroke:var(--accent);stroke-width:2.2;opacity:1}
+.edge.sel .eline{stroke:var(--crit)}
+.edge .elabel{font:10.5px var(--font-mono);fill:var(--muted)}
+.ticks{display:flex;gap:2px;margin:6px 0 2px;min-height:12px}
+.ticks i{display:inline-block;width:8px;height:12px;border-radius:2px;background:var(--line)}
+.ticks i.success{background:var(--ok)} .ticks i.failed{background:var(--crit)} .ticks i.waiting{background:var(--warn)} .ticks i.running{background:var(--info)}
+.fcard:hover{border-color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){
+  .edge.taken .eline{stroke-dasharray:6 4;animation:flow 1.2s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-20}}
+  .node.pulse .nbox{animation:pulse 1.2s ease-out}
+  @keyframes pulse{0%{stroke:var(--accent);stroke-width:4}100%{stroke-width:1.2}}
+}
+
 @media (max-width:860px){
   .app{grid-template-columns:1fr}
   .nav{position:static;height:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding-block:10px;padding-right:max(16px,env(safe-area-inset-right,0px));align-items:center}
@@ -472,7 +506,8 @@ const INIT_INVOICES = [
 
 function initialState() {
   return {
-    ui: { view: 'overview', kbTab: 'documents', ruleId: 'seo-organic-drop', ruleFilter: 'all', toolName: 'kb.search', playbookId: 'seo-drop-triage', docId: null, labTab: 'scenario', trigTab: 'schedules', evTab: 'stream', evFilter: '', evOpen: null, pubType: 'cms.page.published' },
+    ui: { view: 'overview', kbTab: 'documents', ruleId: 'seo-organic-drop', ruleFilter: 'all', toolName: 'kb.search', playbookId: 'seo-drop-triage', docId: null, labTab: 'scenario', trigTab: 'schedules', evTab: 'stream', evFilter: '', evOpen: null, pubType: 'cms.page.published', flowTab: 'monitor', flowId: 'key-page-regression-response', selNode: null, selRun: null, selEdge: null, addType: 'tool', showExport: false },
+    flows: { list: seedFlows(), runs: [], pulse: {} },
     bus: { seq: 0, stream: [], dlq: [], live: false, failNext: false, timers: [
       { id: 'tmr-vat', fireAt: dayStr(10) + ' 08:00', type: 'deadline.reminder.due', key: 'vat-return', reason: 'VAT return: 10 days before the 20th' },
       { id: 'tmr-ssl', fireAt: dayStr(6) + ' 08:00', type: 'deadline.reminder.due', key: 'ssl-cert-expiry', reason: 'TLS expiry: 3 days before' },
@@ -533,6 +568,7 @@ function load() {
     const s = JSON.parse(raw); if (!s || !s.rules || !s.docs) return;
     state = { ...initialState(), ...s, ui: { ...initialState().ui, ...(s.ui || {}) }, bus: { ...initialState().bus, ...(s.bus || {}), live: false, failNext: false } };
     if (state.ui.view === 'triggers') state.ui.view = 'events';
+    if (!s.flows || !s.flows.list) state.flows = { list: seedFlows(), runs: [], pulse: {} }; else state.flows.pulse = {};
     if (!state.rules.some(r => r.type === 'pattern')) state.rules.splice(2, 0, JSON.parse(JSON.stringify(RULES.find(r => r.type === 'pattern'))));
   } catch (e) { /* ignore */ }
 }
@@ -660,8 +696,8 @@ function evaluateRules(ruleIds, source) {
             title: `${field === 'clicks' ? 'Organic clicks' : 'Impressions'} on ${page} at ${pct(last.ratio)} of baseline`,
             evidence: `${field} ${last.value} vs same-weekday median ${Math.round(last.baseline)} over ${r.baseline.window_days} days; below ${pct(r.condition.ratio_lt)} for ${r.condition.consecutive} consecutive days.` };
           state.tasks.unshift(t); addEvent('rule', `${r.id} fired`, `${page}: ${pct(last.ratio)} of baseline → task for ${r.owner_role}`); audit('rule-engine', 'rule.fired', `${r.id} v1 ${page} → ${t.id} (${r.severity}, ${r.owner_role})`);
-          emit('seo.anomaly.detected', { subject: page, key: page, actor: 'rule-engine', data: { rule: r.id, ratio: +last.ratio.toFixed(2), baseline: Math.round(last.baseline), value: last.value }, idem: `anomaly:${r.id}:${page}:${last.date}` });
           emit('task.created', { subject: t.id, key: t.id, actor: 'rule-engine', data: { task_id: t.id, rule: r.id, severity: t.severity, owner_role: t.owner, page }, idem: `task:${t.id}` });
+          emit('seo.anomaly.detected', { subject: page, key: page, actor: 'rule-engine', data: { rule: r.id, path: page, ratio: +last.ratio.toFixed(2), baseline: Math.round(last.baseline), value: last.value, task_id: t.id }, idem: `anomaly:${r.id}:${page}:${last.date}` });
         } else if (fired && r.status === 'shadow') {
           addEvent('shadow', `${r.id} would have fired`, `${page}: ${pct(last.ratio)} of baseline (shadow mode, no notification)`);
         }
@@ -882,6 +918,8 @@ const TOPICS = [
   { type: 'approval.decided', tier: 'operational', producer: 'console, Slack buttons', key: 'approval_id', retention: '90 d', consumers: ['agent-orchestrator', 'learning-loop', 'audit-sink'] },
   { type: 'tool.call.completed', tier: 'operational', producer: 'tool gateway', key: 'call_id', retention: '30 d', consumers: ['audit-sink', 'metrics-projection'] },
   { type: 'agent.step.completed', tier: 'operational', producer: 'agent orchestrator', key: 'task_id', retention: '30 d', consumers: ['audit-sink'] },
+  { type: 'flow.run.completed', tier: 'operational', producer: 'flow runner', key: 'run_id', retention: '30 d', consumers: ['audit-sink', 'metrics-projection'] },
+  { type: 'uptime.check.recovered', tier: 'domain', producer: 'webhook ingress / uptime monitor', key: 'site', retention: '30 d', consumers: ['rule-engine', 'audit-sink'] },
 ];
 const SUBSCRIPTIONS = [
   { consumer: 'rule-engine', filters: ['erp.>', 'cms.>', 'crawl.>', 'seo.metric.>', 'uptime.>', 'tls.>', 'ticket.>', 'deadline.>'], role: 'Stream processor: baselines, consecutive counters, event patterns, state timers', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
@@ -894,6 +932,7 @@ const SUBSCRIPTIONS = [
   { consumer: 'metrics-projection', filters: ['erp.>', 'seo.metric.>', 'task.>', 'tool.call.>'], role: 'Builds the metrics and entity read models; rebuildable by replay', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
   { consumer: 'learning-loop', filters: ['approval.decided', 'task.resolved'], role: 'Computes approval and correction rates per (playbook, tool); proposes autonomy changes', durable: true, ack: 'explicit, 30 s', maxDeliver: 5 },
   { consumer: 'liveness-monitor', filters: ['producer.heartbeat'], role: 'Emits producer.silent when a source misses 2 × its interval (dead-man switch)', durable: true, ack: 'explicit, 10 s', maxDeliver: 2 },
+  { consumer: 'flow-runner', filters: ['>'], role: 'Starts the visual flows whose trigger matches; resumes runs parked on an awaited event', durable: true, ack: 'explicit, 10 min', maxDeliver: 5 },
   { consumer: 'audit-sink', filters: ['>'], role: 'Append-only copy of every event; the audit log is this projection', durable: true, ack: 'explicit, 30 s', maxDeliver: 10 },
   { consumer: 'reconciler', filters: ['day.closed'], role: 'Compares sources with projections and publishes correction events (cron used for correctness)', durable: true, ack: 'explicit, 30 min', maxDeliver: 2 },
 ];
@@ -905,6 +944,7 @@ const SAMPLE_DATA = {
   'erp.invoice.paid': { invoice_id: 'INV-2026-0912', amount: 2450 },
   'erp.order.status_changed': { order_id: 'SO-10262', customer: 'Blue Office Zrt.', status: 'awaiting_payment', amount: 980, days_in_status: 9 },
   'uptime.check.failed': { site: 'www.example.com', status: 503, region: 'eu-central' },
+  'uptime.check.recovered': { site: 'www.example.com', status: 200, region: 'eu-central' },
   'tls.certificate.observed': { host: 'www.example.com', expires: dayStr(80), issuer: 'Example CA' },
   'ticket.created': { ticket_id: 'WEB-431', summary: 'Pricing page shows old plans', priority: 'high' },
   'kb.document.changed': { document_id: 'finance-handbook', change: 'modified', source: 'sharepoint' },
@@ -987,8 +1027,8 @@ const HANDLERS = {
         if (openTaskFor(r.id, path)) return 'pattern matched; task already open (deduplicated)';
         const t = { id: uid('task'), ruleId: r.id, type: 'pattern', key: path, page: path, severity: r.severity, owner: r.owner_role, status: 'open', createdAt: nowStr(), cause: ch.field === 'robots' ? 'noindex' : 'title', detectedBy: `event ${ev.id.slice(-6)} (${ch.field} ${ch.before} → ${ch.after})`, title: `${ch.field === 'robots' ? 'noindex' : ch.field + ' regression'} detected on ${path} right after a CMS publish`, evidence: `crawl.page.changed: ${ch.field} "${ch.before}" → "${ch.after}"; preceded by cms.page.published (${d.deployment_id || 'deployment'}) on the same key.` };
         state.tasks.unshift(t); audit('rule-engine', 'rule.fired', `${r.id} ${path} → ${t.id} (pattern, ${ev.id})`);
-        emit('seo.anomaly.detected', { subject: path, key: path, actor: 'rule-engine', source: 'rule-engine', data: { rule: r.id, kind: 'pattern', field: ch.field, after: ch.after }, idem: `anomaly:${r.id}:${path}:${ev.id}` });
         emit('task.created', { subject: t.id, key: t.id, actor: 'rule-engine', source: 'rule-engine', data: { task_id: t.id, rule: r.id, severity: t.severity, owner_role: t.owner, page: path }, idem: `task:${t.id}` });
+        emit('seo.anomaly.detected', { subject: path, key: path, actor: 'rule-engine', source: 'rule-engine', data: { rule: r.id, path, kind: 'pattern', field: ch.field, after: ch.after, task_id: t.id }, idem: `anomaly:${r.id}:${path}:${ev.id}` });
         return `pattern matched → ${t.id} created ${ev.latency ? '' : 'immediately'}`;
       }
       case 'seo.metric.collected': {
@@ -1021,6 +1061,7 @@ const HANDLERS = {
         return `failure ${recent} of 3 in the 5-minute window; no incident yet`;
       }
       case 'tls.certificate.observed': { const r = getRule('ssl-cert-expiry'); if (r && d.expires) { r.due = { date: d.expires }; const t = state.tasks.find(x => x.ruleId === r.id && x.status !== 'done'); if (t && timeStatus(r).phase === 'upcoming') { t.status = 'done'; audit('rule-engine', 'task.done', `${t.id} resolved: certificate renewed (expires ${d.expires})`); return `expiry moved to ${d.expires}; open task resolved automatically`; } return `expiry recorded: ${d.expires}`; } return 'recorded'; }
+      case 'uptime.check.recovered': return 'incident window reset';
       case 'ticket.created': return 'SLA timer armed (4 h); rule ticket-first-response-sla is in draft, so no notification would follow';
       case 'deadline.reminder.due': { const r = getRule(d.deadline_id); if (r && r.type === 'time') { const res = evaluateRules([r.id]); return res[0] && res[0].fired ? `time rule ${r.id} fired → task` : `timer fired but ${r.id} is outside its reminder window (${timeStatus(r).daysLeft} days left)`; } if (d.deadline_id && d.deadline_id.startsWith('SO-')) { const res = evaluateRules(['order-stuck-awaiting-payment']); return `stuck-order check for ${d.deadline_id}: ${res[0] && res[0].records.some(x => x.id === d.deadline_id) ? 'still unpaid → task' : 'paid, nothing to do'}`; } return `no rule bound to ${d.deadline_id}`; }
       default: return 'no rule subscribed to this type';
@@ -1059,6 +1100,7 @@ const HANDLERS = {
   'learning-loop'(ev) { return ev.data.decision === 'rejected' ? 'correction counted; (playbook, tool) autonomy demoted' : 'approval counted toward promotion'; },
   'liveness-monitor'(ev) { return `heartbeat from ${ev.data.producer}; next expected in ${ev.data.interval_s || 60} s`; },
   'audit-sink'(ev) { return 'appended'; },
+  'flow-runner'(ev) { return runFlowsFor(ev); },
   reconciler(ev) { return `${ev.data.date}: compared ERP, CMS and deadlines with projections; 0 corrections`; },
 };
 let liveTimer = null;
@@ -1073,12 +1115,257 @@ function startLive() {
     () => emit('kb.document.changed', { subject: 'cms-release-process', actor: 'connector:confluence', data: { document_id: 'cms-release-process', change: 'modified', source: 'confluence', chunks: 3 }, idem: 'kb:' + Date.now() }),
     () => emit('cms.page.published', { subject: '/blog/' + ['autumn-update', 'erp-tips', 'pricing-faq'][Math.floor(Math.random() * 3)], actor: 'cms-outbox', data: { path: '/blog/autumn-update', revision: 5000 + Math.floor(Math.random() * 100), changed_fields: ['content'], by: 'm.varga' }, idem: 'cms:' + Date.now() }),
   ];
-  liveTimer = setInterval(() => { pool[Math.floor(Math.random() * pool.length)](); if (state.ui.view === 'events' || state.ui.view === 'overview') render(); else { renderNav(); save(); } }, 2800);
+  liveTimer = setInterval(() => { pool[Math.floor(Math.random() * pool.length)](); if (state.ui.view === 'events' || state.ui.view === 'overview' || state.ui.view === 'flows') render(); else { renderNav(); save(); } }, 2800);
+}
+
+// ---------- flows (n8n-style orchestration layer over the bus)
+const NODE_TYPES = {
+  trigger: { label: 'Trigger', hint: 'starts a run when an event arrives', cls: 'nt-trigger' },
+  filter: { label: 'Filter', hint: 'condition on the data', cls: 'nt-filter', branches: ['true', 'false'] },
+  rule: { label: 'Rule', hint: 'evaluate a rule from the rule system', cls: 'nt-filter', branches: ['fired', 'not fired'] },
+  tool: { label: 'Tool', hint: 'call a tool (reads auto, writes through policy)', cls: 'nt-tool' },
+  agent: { label: 'Agent step', hint: 'run a playbook / bounded LLM task', cls: 'nt-agent' },
+  approval: { label: 'Approval', hint: 'ask a role; the run waits', cls: 'nt-approval', branches: ['approved', 'rejected'] },
+  notify: { label: 'Notify', hint: 'message a channel or person', cls: 'nt-notify' },
+  task: { label: 'Task', hint: 'create a task for a role', cls: 'nt-notify' },
+  wait: { label: 'Wait for event', hint: 'pause until an event with the same key arrives', cls: 'nt-wait', branches: ['received', 'timeout'] },
+  delay: { label: 'Delay', hint: 'pause on a durable timer', cls: 'nt-wait' },
+  end: { label: 'End', hint: 'finish the run', cls: 'nt-end' },
+};
+function seedFlows() {
+  const F = (id, name, owner, status, trigger, nodes, edges, desc) => ({ id, name, owner, status, version: 1, description: desc, nodes: [{ id: 'trigger', type: 'trigger', name: 'On ' + trigger.eventType, p: trigger }, ...nodes], edges });
+  return [
+    F('key-page-regression-response', 'Key page regression response', 'marketing', 'active', { eventType: 'seo.anomaly.detected', filter: '' }, [
+      { id: 'diff', type: 'tool', name: 'Crawl diff of the page', p: { tool: 'crawler.diff_page', args: '{"url":"{{data.path|event.subject}}","since_days":7}' } },
+      { id: 'deploys', type: 'tool', name: 'Recent CMS deployments', p: { tool: 'deploy.list_recent', args: '{"system":"cms","days":7}' } },
+      { id: 'triage', type: 'agent', name: 'SEO drop triage', p: { playbook: 'seo-drop-triage', instruction: 'Rank the likely causes from the diff, deployments and metrics; recommend one action.' } },
+      { id: 'isnoindex', type: 'filter', name: 'Is it a noindex regression?', p: { field: 'nodes.diff.summary', op: 'contains', value: 'noindex' } },
+      { id: 'notify', type: 'notify', name: 'Alert the SEO owner', p: { channel: '#marketing', text: '{{nodes.triage.summary}}' } },
+      { id: 'approve', type: 'approval', name: 'Approve removing noindex', p: { tool: 'cms.remove_noindex', args: '{"path":"{{event.subject}}","dry_run":false}', approverRole: 'seo_owner' } },
+      { id: 'ticket', type: 'tool', name: 'Open a ticket for manual review', p: { tool: 'ticketing.create_issue', args: '{"project":"WEB","summary":"Review organic drop on {{event.subject}}"}' } },
+      { id: 'done', type: 'end', name: 'Resolved', p: { status: 'success', summary: 'Fix applied and page re-indexed' } },
+      { id: 'manual', type: 'end', name: 'Handed to a person', p: { status: 'success', summary: 'Ticket created' } },
+    ], [['trigger', 'diff'], ['diff', 'deploys'], ['deploys', 'triage'], ['triage', 'isnoindex'], ['isnoindex', 'notify', 'true'], ['isnoindex', 'ticket', 'false'], ['notify', 'approve'], ['approve', 'done', 'approved'], ['approve', 'ticket', 'rejected'], ['ticket', 'manual']],
+      'Handles every SEO anomaly the rule engine detects: enrich, let the agent triage, alert the owner, and either fix behind an approval or hand over with a ticket.'),
+    F('invoice-reminder-ladder', 'Invoice reminder ladder', 'finance', 'active', { eventType: 'erp.invoice.posted', filter: '' }, [
+      { id: 'waitdue', type: 'delay', name: 'Wait until due + 7 days', p: { duration: '21d' } },
+      { id: 'paid', type: 'wait', name: 'Paid in the meantime?', p: { eventType: 'erp.invoice.paid', keyField: 'invoice_id', timeout: '0s' } },
+      { id: 'l1', type: 'tool', name: 'Reminder level 1', p: { tool: 'erp.create_payment_reminder', args: '{"invoice_id":"{{data.invoice_id}}","amount":{{data.amount}},"level":1,"dry_run":false}' } },
+      { id: 'wait2', type: 'delay', name: 'Wait 14 days', p: { duration: '14d' } },
+      { id: 'paid2', type: 'wait', name: 'Paid now?', p: { eventType: 'erp.invoice.paid', keyField: 'invoice_id', timeout: '0s' } },
+      { id: 'l3', type: 'approval', name: 'Approve collection notice (level 3)', p: { tool: 'erp.create_payment_reminder', args: '{"invoice_id":"{{data.invoice_id}}","amount":{{data.amount}},"level":3,"dry_run":false}', approverRole: 'finance_lead' } },
+      { id: 'closed', type: 'end', name: 'Invoice paid', p: { status: 'success', summary: 'Paid, ladder stopped' } },
+      { id: 'sent', type: 'end', name: 'Collection notice sent', p: { status: 'success', summary: 'Handed to collection' } },
+      { id: 'held', type: 'end', name: 'Held by finance', p: { status: 'stopped', summary: 'Finance declined the collection notice' } },
+    ], [['trigger', 'waitdue'], ['waitdue', 'paid'], ['paid', 'closed', 'received'], ['paid', 'l1', 'timeout'], ['l1', 'wait2'], ['wait2', 'paid2'], ['paid2', 'closed', 'received'], ['paid2', 'l3', 'timeout'], ['l3', 'sent', 'approved'], ['l3', 'held', 'rejected']],
+      'Starts for every posted invoice and sleeps on durable timers; a payment event ends it at any point. Level 3 always goes through finance.'),
+    F('stuck-order-follow-up', 'Stuck order follow-up', 'sales', 'active', { eventType: 'erp.order.status_changed', filter: 'data.status == awaiting_payment' }, [
+      { id: 'isstuck', type: 'rule', name: 'Stuck for more than 7 days?', p: { ruleId: 'order-stuck-awaiting-payment' } },
+      { id: 'draft', type: 'agent', name: 'Draft the follow-up email', p: { playbook: 'stuck-order-follow-up', instruction: 'Draft a polite payment follow-up for {{data.customer}} about {{data.order_id}}.' } },
+      { id: 'send', type: 'approval', name: 'Sales ops approve sending', p: { tool: 'slack.post_message', args: '{"channel":"#sales-ops","text":"Follow-up for {{data.order_id}} ready to send"}', approverRole: 'sales_ops' } },
+      { id: 'note', type: 'tool', name: 'Note on the order', p: { tool: 'ticketing.create_issue', args: '{"project":"FIN","summary":"Follow-up sent for {{data.order_id}}"}' } },
+      { id: 'ok', type: 'end', name: 'Followed up', p: { status: 'success', summary: 'Customer contacted' } },
+      { id: 'skip', type: 'end', name: 'Not stuck yet', p: { status: 'success', summary: 'Timer will re-check at +7 d' } },
+    ], [['trigger', 'isstuck'], ['isstuck', 'draft', 'fired'], ['isstuck', 'skip', 'not fired'], ['draft', 'send'], ['send', 'note', 'approved'], ['send', 'skip', 'rejected'], ['note', 'ok']],
+      'Reacts to CDC events from the ERP orders table. The rule node keeps the 7-day threshold where it belongs.'),
+    F('website-incident', 'Website incident', 'it', 'active', { eventType: 'site.incident.opened', filter: '' }, [
+      { id: 'status', type: 'tool', name: 'Current availability', p: { tool: 'uptime.status', args: '{"days":1}' } },
+      { id: 'page', type: 'notify', name: 'Page IT operations', p: { channel: '#it-ops', text: 'Incident on {{data.site}}: {{data.failures}} failed checks. Availability {{nodes.status.availability}}.' } },
+      { id: 'task', type: 'task', name: 'Critical task for IT lead', p: { severity: 'critical', ownerRole: 'it_lead', title: 'Website incident on {{data.site}}' } },
+      { id: 'recover', type: 'wait', name: 'Wait for recovery', p: { eventType: 'uptime.check.recovered', keyField: 'site', timeout: '4h' } },
+      { id: 'allclear', type: 'notify', name: 'All clear', p: { channel: '#it-ops', text: '{{data.site}} recovered.' } },
+      { id: 'escalate', type: 'notify', name: 'Escalate to management', p: { channel: '#general', text: '{{data.site}} down for 4 hours.' } },
+      { id: 'end', type: 'end', name: 'Closed', p: { status: 'success', summary: 'Incident closed' } },
+    ], [['trigger', 'status'], ['status', 'page'], ['page', 'task'], ['task', 'recover'], ['recover', 'allclear', 'received'], ['recover', 'escalate', 'timeout'], ['allclear', 'end'], ['escalate', 'end']],
+      'Opened by the rule engine pattern "3 failed checks in 5 minutes". Waits on the recovery event, escalates on timeout.'),
+    F('new-document-review', 'New knowledge document review', 'it', 'paused', { eventType: 'kb.document.changed', filter: '' }, [
+      { id: 'owner', type: 'notify', name: 'Tell the document owner', p: { channel: '#it-ops', text: 'Document {{data.document_id}} was re-indexed ({{data.chunks}} chunks).' } },
+      { id: 'end', type: 'end', name: 'Done', p: { status: 'success', summary: 'Owner informed' } },
+    ], [['trigger', 'owner'], ['owner', 'end']], 'A small example flow; paused so it does not notify during the live feed.'),
+  ].map(f => { f.edges = f.edges.map(([from, to, label]) => ({ from, to, label: label || '' })); layoutFlow(f); return f; });
+}
+function layoutFlow(f) {
+  const layer = { trigger: 0 }; const out = {}; f.edges.forEach(e => (out[e.from] = out[e.from] || []).push(e.to));
+  const q = ['trigger']; while (q.length) { const n = q.shift(); for (const m of out[n] || []) { if (layer[m] == null || layer[m] < layer[n] + 1) { layer[m] = layer[n] + 1; q.push(m); } } }
+  const byLayer = {}; f.nodes.forEach(n => { if (layer[n.id] == null) layer[n.id] = 0; (byLayer[layer[n.id]] = byLayer[layer[n.id]] || []).push(n); });
+  for (const [l, ns] of Object.entries(byLayer)) ns.forEach((n, i) => { if (n.x == null) { n.x = 30 + l * 240; n.y = 30 + i * 96; } });
+}
+function getPath(obj, path) { return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj); }
+function tpl(str, ctx) { return String(str ?? '').replace(/\{\{([^}]+)\}\}/g, (_, expr) => { for (const alt of expr.split('|')) { const v = getPath(ctx, alt.trim()); if (v !== undefined && v !== null && v !== '') return typeof v === 'object' ? JSON.stringify(v) : String(v); } return ''; }); }
+function parseArgs(str, ctx) { const t = tpl(str, ctx); try { return JSON.parse(t); } catch (e) { return { _parse_error: e.message, raw: t }; } }
+function evalFilter(expr, ctx) {
+  if (!expr) return true; const m = expr.match(/^\s*([\w.]+)\s*(==|!=|>=|<=|>|<|contains|exists|in)\s*(.*)$/); if (!m) return true;
+  const v = getPath(ctx, m[1]); const rhs = m[3].trim().replace(/^["']|["']$/g, '');
+  switch (m[2]) { case '==': return String(v) === rhs; case '!=': return String(v) !== rhs; case '>': return +v > +rhs; case '<': return +v < +rhs; case '>=': return +v >= +rhs; case '<=': return +v <= +rhs; case 'contains': return String(v ?? '').toLowerCase().includes(rhs.toLowerCase()); case 'exists': return v !== undefined && v !== null; case 'in': return rhs.split(',').map(x => x.trim()).includes(String(v)); default: return true; }
+}
+function flowOutEdges(f, nodeId, branch) { const es = f.edges.filter(e => e.from === nodeId); const lab = es.filter(e => e.label); if (branch == null) return es; const hit = es.filter(e => e.label === branch); return hit.length ? hit : es.filter(e => !e.label); }
+function runCtx(run) { return { data: run.event.data, event: { type: run.event.type, subject: run.event.subject, id: run.event.id, time: run.event.time }, prev: run.prev, nodes: run.outputs, run: { id: run.id, flow: run.flowId } }; }
+function markPulse(flowId, nodeId) { state.flows.pulse[nodeId + '@' + flowId] = Date.now(); }
+function startRun(flow, ev, opts = {}) {
+  const run = { id: uid('run'), flowId: flow.id, version: flow.version, startedAt: timeNow(), status: 'running', test: !!opts.test, event: { type: ev.type, subject: ev.subject, id: ev.id, time: ev.time, data: ev.data }, correlation: ev.correlation, key: ev.key || ev.subject, steps: [], outputs: {}, prev: null, waiting: null, endedAt: null, summary: '' };
+  state.flows.runs.unshift(run); state.flows.runs = state.flows.runs.slice(0, 150);
+  execFrom(run, flow, 'trigger', { data: ev.data });
+  return run;
+}
+function execFrom(run, flow, nodeId, input) {
+  let queue = [[nodeId, input]]; let guard = 0;
+  while (queue.length && guard++ < 60) {
+    const [nid, inp] = queue.shift(); const node = flow.nodes.find(n => n.id === nid); if (!node) continue;
+    const t0 = performance.now(); const step = { nodeId: nid, name: node.name, type: node.type, status: 'ok', startedAt: timeNow(), input: inp, output: null, note: '', ms: 0 };
+    let res;
+    try { res = execNode(run, flow, node, inp); } catch (err) { res = { output: { error: err.message }, status: 'failed', note: err.message }; }
+    step.ms = Math.round(performance.now() - t0 + 15 + Math.random() * 120); step.output = res.output; step.note = res.note || ''; step.status = res.status || 'ok'; step.branch = res.branch || null;
+    run.steps.push(step); run.outputs[nid] = res.output; run.prev = res.output; markPulse(flow.id, nid);
+    if (res.status === 'failed') { run.status = 'failed'; run.endedAt = timeNow(); run.summary = `Failed at "${node.name}": ${res.note}`; emit('flow.run.completed', { subject: run.id, key: run.id, actor: 'flow-runner', source: 'flow-runner', data: { run_id: run.id, flow: flow.id, status: 'failed', node: nid }, idem: `run:${run.id}:done` }); return; }
+    if (res.wait) { run.status = 'waiting'; run.waiting = { nodeId: nid, ...res.wait, since: timeNow() }; step.status = 'waiting'; return; }
+    if (node.type === 'end') { run.status = node.p.status || 'success'; run.endedAt = timeNow(); run.summary = tpl(node.p.summary || node.name, runCtx(run)); emit('flow.run.completed', { subject: run.id, key: run.id, actor: 'flow-runner', source: 'flow-runner', data: { run_id: run.id, flow: flow.id, status: run.status, summary: run.summary, steps: run.steps.length }, idem: `run:${run.id}:done` }); return; }
+    const next = flowOutEdges(flow, nid, res.branch);
+    if (!next.length) { run.status = 'success'; run.endedAt = timeNow(); run.summary = `Ended after "${node.name}" (no outgoing connection)`; return; }
+    for (const e of next) queue.push([e.to, res.output]);
+  }
+}
+function resumeRun(run, output, branch) {
+  const flow = state.flows.list.find(f => f.id === run.flowId); if (!flow || !run.waiting) return;
+  const w = run.waiting; const step = run.steps.find(s => s.nodeId === w.nodeId && s.status === 'waiting'); if (step) { step.status = 'ok'; step.output = output; step.branch = branch; step.note = `resumed: ${branch}`; }
+  run.outputs[w.nodeId] = output; run.prev = output; run.waiting = null; run.status = 'running';
+  const next = flowOutEdges(flow, w.nodeId, branch);
+  if (!next.length) { run.status = 'success'; run.endedAt = timeNow(); run.summary = `Ended after "${step ? step.name : w.nodeId}"`; return; }
+  for (const e of next) execFrom(run, flow, e.to, output);
+}
+function execNode(run, flow, node, input) {
+  const ctx = runCtx(run); const p = node.p || {}; const actor = `flow:${flow.id}`;
+  switch (node.type) {
+    case 'trigger': return { output: { data: run.event.data, event: ctx.event }, note: `matched ${run.event.type}` };
+    case 'filter': { const expr = `${p.field} ${p.op} ${p.value ?? ''}`; const ok = evalFilter(expr, ctx); return { output: { matched: ok, expression: expr, value: getPath(ctx, p.field) }, branch: ok ? 'true' : 'false', note: ok ? 'condition true' : 'condition false' }; }
+    case 'rule': {
+      const r = getRule(p.ruleId); if (!r) return { output: { error: 'rule not found' }, status: 'failed', note: `rule ${p.ruleId} not found` };
+      let fired = false, evidence = {};
+      if (r.type === 'state') { const recs = evalState(r); const key = run.event.data.order_id || run.event.data.ticket_id || run.key; fired = recs.some(x => x.id === key) || (!key && recs.length > 0); evidence = { matching: recs.map(x => x.id), key }; }
+      else if (r.type === 'threshold') { const page = run.event.data.path || run.event.subject; const rows = state.metrics[page]; if (rows) { const ev = evalThreshold(r, rows, thresholdField(r)); const l = ev.points[ev.points.length - 1]; fired = !!l.fired; evidence = { page, ratio: l.ratio && +l.ratio.toFixed(2), baseline: l.baseline && Math.round(l.baseline) }; } }
+      else if (r.type === 'time') { const ts = timeStatus(r); fired = ts.phase !== 'upcoming'; evidence = ts; }
+      else if (r.type === 'pattern') { const ch = run.event.data.changes || []; fired = ch.some(c => r.pattern.where.changed_fields_any.includes(c.field)); evidence = { changes: ch }; }
+      return { output: { rule: r.id, fired, evidence }, branch: fired ? 'fired' : 'not fired', note: fired ? `${r.id} fired` : `${r.id} did not fire` };
+    }
+    case 'tool': {
+      const args = parseArgs(p.args || '{}', ctx); if (args._parse_error) return { output: args, status: 'failed', note: 'arguments are not valid JSON after templating' };
+      if (run.test && 'dry_run' in args) args.dry_run = true;
+      const res = run.test ? { decision: policyDecision(p.tool, args), result: runTool(p.tool, args) } : callTool(p.tool, args, actor);
+      if (res.decision.allow === 'forbid') return { output: { forbidden: true, why: res.decision.why }, status: 'failed', note: `policy ${res.decision.rule} forbids this call` };
+      if (res.approval) return { output: { approval_id: res.approval.id, dry_run: res.dry }, wait: { kind: 'approval', approvalId: res.approval.id }, note: `policy ${res.decision.rule} requires approval from ${res.approval.approver}; run parked` };
+      return { output: res.result, note: `${p.tool} → ${res.decision.allow}${run.test ? ' (test: dry run)' : ''}` };
+    }
+    case 'agent': {
+      const task = state.tasks.find(t => t.page && t.page === (run.event.data.path || run.event.subject) && t.trace);
+      const summary = task ? `${task.title}. Likely causes: ${task.trace.causes.slice(0, 2).join('; ')}.` : `${tpl(p.instruction || '', ctx)} (playbook ${p.playbook}; ${run.test ? 'test run, no model call' : 'bounded model call, evidence attached'})`;
+      return { output: { playbook: p.playbook, summary, causes: task ? task.trace.causes : [], evidence_from: task ? task.id : 'run context' }, note: task ? `reused the agent run of ${task.id}` : 'agent step completed' };
+    }
+    case 'approval': {
+      const args = parseArgs(p.args || '{}', ctx); if (args._parse_error) return { output: args, status: 'failed', note: 'arguments are not valid JSON after templating' };
+      if (run.test) return { output: { would_ask: p.approverRole, tool: p.tool, args }, branch: 'approved', note: 'test run: approval assumed' };
+      const existing = state.approvals.find(a => a.status === 'pending' && a.tool === p.tool && JSON.stringify(a.args.path || a.args.invoice_id || '') === JSON.stringify(args.path || args.invoice_id || ''));
+      if (existing) return { output: { approval_id: existing.id, reused: true }, wait: { kind: 'approval', approvalId: existing.id }, note: `joined pending approval ${existing.id} (already requested by the agent)` };
+      const dry = runTool(p.tool, { ...args, dry_run: true });
+      const ap = { id: uid('apr'), tool: p.tool, args, dryRun: JSON.stringify(dry.planned_change || dry.would_send || dry), requestedBy: `${actor} · node "${node.name}"`, approver: p.approverRole || policyDecision(p.tool, args).approver || 'finance_lead', rule: 'flow-approval-node', status: 'pending', at: nowStr(), taskId: null, runId: run.id };
+      state.approvals.unshift(ap); audit(actor, 'approval.requested', `${ap.id} ${p.tool} from node "${node.name}"`);
+      emit('approval.requested', { subject: ap.id, key: ap.id, actor, source: 'flow-runner', data: { approval_id: ap.id, tool: p.tool, approver_role: ap.approver, policy: 'flow-approval-node', run_id: run.id }, idem: `approval:${ap.id}` });
+      return { output: { approval_id: ap.id, dry_run: dry }, wait: { kind: 'approval', approvalId: ap.id }, note: `approval card sent to ${personName(ap.approver)}; run parked until approval.decided` };
+    }
+    case 'notify': { const text = tpl(p.text, ctx); if (!run.test) callTool('slack.post_message', { channel: p.channel, text }, actor); return { output: { channel: p.channel, text }, note: run.test ? 'test run: message not sent' : `posted to ${p.channel}` }; }
+    case 'task': { if (run.test) return { output: { would_create: tpl(p.title, ctx) }, note: 'test run: task not created' }; const t = { id: uid('task'), ruleId: flow.id, type: 'flow', key: run.key, severity: p.severity || 'medium', owner: p.ownerRole, status: 'open', createdAt: nowStr(), title: tpl(p.title, ctx), evidence: `created by flow ${flow.id}, run ${run.id}` }; state.tasks.unshift(t); audit(actor, 'task.created', t.id); return { output: { task_id: t.id }, note: `task ${t.id} for ${personName(p.ownerRole)}` }; }
+    case 'wait': { if (run.test) return { output: { simulated: 'timeout' }, branch: 'timeout', note: 'test run: assumed no event arrived' }; const keyVal = getPath(ctx, 'data.' + p.keyField) ?? run.key; if (p.timeout === '0s') { const seen = state.bus.stream.find(e => e.type === p.eventType && String(e.data[p.keyField] ?? e.subject) === String(keyVal) && e.seq > (run.lastSeq || 0)); if (seen) return { output: { event: seen.type, id: seen.id }, branch: 'received', note: `${p.eventType} already in the stream for ${keyVal}` }; return { output: { checked: p.eventType, key: keyVal }, branch: 'timeout', note: `no ${p.eventType} for ${keyVal}; continuing` }; } return { output: { waiting_for: p.eventType, key: keyVal }, wait: { kind: 'event', eventType: p.eventType, keyField: p.keyField, keyVal, timeout: p.timeout }, note: `parked until ${p.eventType} for ${keyVal} (timeout ${p.timeout})` }; }
+    case 'delay': { if (run.test) return { output: { slept: p.duration, simulated: true }, note: 'test run: delay skipped' }; const id = `tmr-${run.id}-${node.id}`; const m = String(p.duration).match(/^(\d+)([dhm])$/); const days = m ? (m[2] === 'd' ? +m[1] : m[2] === 'h' ? +m[1] / 24 : +m[1] / 1440) : 1; armTimer(id, fmtDate(addDays(today, Math.ceil(days))) + ' 08:00', 'flow.delay.elapsed', run.id, `${flow.name}: "${node.name}" (${p.duration})`); return { output: { timer: id, duration: p.duration }, wait: { kind: 'timer', timerId: id }, note: `durable timer ${id} armed (${p.duration}); fire it from Events › Producers & timers` }; }
+    case 'end': return { output: { status: p.status, summary: tpl(p.summary || '', ctx) }, note: 'run finished' };
+    default: return { output: {}, note: 'unknown node type' };
+  }
+}
+function flowTriggerMatches(flow, ev) { const t = flow.nodes.find(n => n.type === 'trigger'); if (!t || t.p.eventType !== ev.type) return false; return evalFilter(t.p.filter, { data: ev.data, event: ev }); }
+function runFlowsFor(ev) {
+  if (ev.type.startsWith('flow.')) return 'ignored (own events)';
+  let started = 0, resumed = 0;
+  for (const run of state.flows.runs) {
+    if (run.status !== 'waiting' || !run.waiting || run.waiting.kind !== 'event') continue;
+    const w = run.waiting; if (w.eventType !== ev.type) continue; const k = ev.data[w.keyField] ?? ev.subject; if (String(k) !== String(w.keyVal)) continue;
+    resumeRun(run, { event: ev.type, id: ev.id, data: ev.data }, 'received'); resumed++;
+  }
+  for (const f of state.flows.list) { if (f.status !== 'active' || !flowTriggerMatches(f, ev)) continue; const dup = state.flows.runs.find(r => r.flowId === f.id && r.event.id === ev.id); if (dup) continue; startRun(f, ev); started++; }
+  return started || resumed ? `${started ? 'started ' + started + ' run(s)' : ''}${started && resumed ? ', ' : ''}${resumed ? 'resumed ' + resumed + ' run(s)' : ''}` : 'no flow subscribed';
+}
+function resumeOnApproval(ap) { for (const run of state.flows.runs) { if (run.status === 'waiting' && run.waiting && run.waiting.kind === 'approval' && run.waiting.approvalId === ap.id) resumeRun(run, { approval_id: ap.id, decision: ap.status, result: ap.result || null }, ap.status === 'approved' ? 'approved' : 'rejected'); } }
+function resumeOnTimer(timer) { for (const run of state.flows.runs) { if (run.status === 'waiting' && run.waiting && run.waiting.kind === 'timer' && run.waiting.timerId === timer.id) resumeRun(run, { elapsed: true, timer: timer.id }, null); } }
+function flowStats(f) { const rs = state.flows.runs.filter(r => r.flowId === f.id); const c = s => rs.filter(r => r.status === s).length; const ms = rs.filter(r => r.endedAt).map(r => r.steps.reduce((a, s) => a + s.ms, 0)).sort((a, b) => a - b); return { total: rs.length, success: c('success'), failed: c('failed'), waiting: c('waiting'), stopped: c('stopped') + c('running'), last: rs[0] ? rs[0].startedAt : '–', p95: ms.length ? ms[Math.floor(ms.length * 0.95)] : 0, recent: rs.slice(0, 20) }; }
+
+// ---------- flows view
+const RUN_PILL = s => `<span class="pill ${s === 'success' ? 'ok' : s === 'failed' ? 'crit' : s === 'waiting' ? 'warn' : s === 'running' ? 'info' : ''}">${esc(s)}</span>`;
+function renderCanvasSVG(f, run) {
+  const W = Math.max(640, ...f.nodes.map(n => n.x + 220)), H = Math.max(260, ...f.nodes.map(n => n.y + 100));
+  const stepBy = {}; if (run) run.steps.forEach(s => { stepBy[s.nodeId] = s; });
+  const counts = {}; state.flows.runs.filter(r => r.flowId === f.id).forEach(r => r.steps.forEach(s => { counts[s.nodeId] = (counts[s.nodeId] || 0) + 1; }));
+  const pos = id => f.nodes.find(n => n.id === id);
+  const edges = f.edges.map(e => { const a = pos(e.from), b = pos(e.to); if (!a || !b) return ''; const x1 = a.x + 184, y1 = a.y + 28, x2 = b.x - 4, y2 = b.y + 28; const dx = Math.max(40, (x2 - x1) / 2); const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`; const taken = run && stepBy[e.from] && stepBy[e.to] && (!e.label || stepBy[e.from].branch === e.label || (stepBy[e.from].branch == null)); return `<g class="edge ${taken ? 'taken' : ''} ${state.ui.selEdge === e.from + '>' + e.to ? 'sel' : ''}" data-edge="${esc(e.from)}>${esc(e.to)}"><path d="${d}" class="ehit"/><path d="${d}" class="eline"/>${e.label ? `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 6}" text-anchor="middle" class="elabel">${esc(e.label)}</text>` : ''}</g>`; }).join('');
+  const nodes = f.nodes.map(n => { const t = NODE_TYPES[n.type] || NODE_TYPES.end; const st = stepBy[n.id]; const sel = state.ui.selNode === n.id; const sub = n.type === 'trigger' ? n.p.eventType : n.type === 'tool' || n.type === 'approval' ? n.p.tool : n.type === 'rule' ? n.p.ruleId : n.type === 'agent' ? n.p.playbook : n.type === 'filter' ? `${n.p.field} ${n.p.op} ${n.p.value ?? ''}` : n.type === 'wait' ? n.p.eventType : n.type === 'delay' ? n.p.duration : n.type === 'notify' ? n.p.channel : n.type === 'task' ? n.p.ownerRole : t.label; const br = t.branches || []; return `<g class="node ${t.cls} ${sel ? 'sel' : ''} ${st ? 'st-' + st.status : ''} ${state.flows.pulse[n.id + '@' + f.id] ? 'pulse' : ''}" transform="translate(${n.x},${n.y})" data-node="${esc(n.id)}"><rect class="nbox" width="184" height="56" rx="8"/><rect class="nstripe" width="6" height="56" rx="3"/><text x="16" y="22" class="ntitle">${esc(n.name.length > 24 ? n.name.slice(0, 23) + '…' : n.name)}</text><text x="16" y="40" class="nsub">${esc(String(sub).length > 30 ? String(sub).slice(0, 29) + '…' : sub)}</text>${n.type !== 'trigger' ? '<circle cx="0" cy="28" r="5" class="port"/>' : ''}${n.type !== 'end' ? (br.length ? br.map((b, i) => `<circle cx="184" cy="${18 + i * 20}" r="5" class="port"/>`).join('') : '<circle cx="184" cy="28" r="5" class="port"/>') : ''}${counts[n.id] ? `<g transform="translate(150,-9)"><rect width="30" height="18" rx="9" class="nbadge"/><text x="15" y="13" text-anchor="middle" class="nbadge-t">${counts[n.id]}</text></g>` : ''}${st ? `<circle cx="176" cy="48" r="5" class="ndot ${st.status}"><title>${esc(st.status)} · ${st.ms} ms</title></circle>` : ''}</g>`; }).join('');
+  return `<svg class="canvas" id="canvas" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Flow ${esc(f.name)}">${edges}${nodes}</svg>`;
+}
+function viewFlows() {
+  const S = state.flows; const t = state.ui.flowTab; const f = S.list.find(x => x.id === state.ui.flowId) || S.list[0];
+  const head = `<div class="page-h"><div><h1>Flows</h1><p>The orchestration layer the client can see and shape: each flow is a chain of nodes from a bus event to actions. Runs light up the canvas as events arrive; approvals, waits and delays park a run until the matching event comes back.</p></div>
+    <div class="actions"><button class="btn ${state.bus.live ? 'danger' : ''}" data-action="toggle-live">${state.bus.live ? 'Stop live feed' : 'Start live feed'}</button><button class="btn primary" data-action="new-flow">New flow</button></div></div>
+    ${tabs([['monitor', 'Monitor'], ['canvas', 'Designer'], ['runs', `Executions (${S.runs.length})`]], t, 'flow-tab')}`;
+  if (t === 'monitor') {
+    const waiting = S.runs.filter(r => r.status === 'waiting');
+    return head + `<div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${S.list.map(fl => { const st = flowStats(fl); return `<div class="tile fcard ${st.failed ? 'crit' : ''}" data-action="open-flow" data-id="${fl.id}" style="cursor:pointer"><div class="row" style="justify-content:space-between"><b>${esc(fl.name)}</b>${statusPill(fl.status)}</div><span class="sub">on <code>${esc(fl.nodes[0].p.eventType)}</code> · v${fl.version}</span><div class="row" style="gap:14px;margin-top:6px"><span><span class="val" style="font-size:20px">${st.total}</span> <span class="sub">runs</span></span><span class="sub" style="color:var(--ok)">${st.success} ok</span><span class="sub" style="color:var(--warn)">${st.waiting} waiting</span><span class="sub" style="color:var(--crit)">${st.failed} failed</span></div><div class="ticks">${st.recent.slice().reverse().map(r => `<i class="${r.status}" title="${esc(r.startedAt)} ${r.status}"></i>`).join('') || '<span class="hint">no runs yet</span>'}</div><span class="sub">last ${esc(st.last)} · p95 ${st.p95} ms</span></div>`; }).join('')}</div>
+    <div class="grid2"><div class="panel"><div class="ph"><h2>Parked runs (waiting on a person, an event or a timer)</h2></div><div class="pb tight">${waiting.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Flow</th><th>Waiting at</th><th>For</th><th>Since</th><th></th></tr></thead><tbody>${waiting.map(r => { const fl = S.list.find(x => x.id === r.flowId); const w = r.waiting; return `<tr><td>${esc(fl ? fl.name : r.flowId)}<br><span class="hint mono">${esc(r.id)}</span></td><td>${esc((fl && fl.nodes.find(n => n.id === w.nodeId) || {}).name || w.nodeId)}</td><td class="small">${w.kind === 'approval' ? `approval <code>${esc(w.approvalId)}</code>` : w.kind === 'event' ? `<code>${esc(w.eventType)}</code> for ${esc(String(w.keyVal))}` : `timer <code>${esc(w.timerId)}</code>`}</td><td class="nowrap mono small">${esc(w.since)}</td><td>${w.kind === 'approval' ? `<button class="btn sm" data-action="nav" data-view="approvals">Decide</button>` : w.kind === 'timer' ? `<button class="btn sm" data-action="fire-timer" data-id="${esc(w.timerId)}" data-stay="1">Fire timer</button>` : `<button class="btn sm" data-action="nav" data-view="events" data-evtab="publish" data-pubtype="${esc(w.eventType)}">Publish event</button>`}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Nothing parked.</div>'}</div></div>
+    <div class="panel"><div class="ph"><h2>Latest runs across all flows</h2><span class="hint">${state.bus.live ? 'live' : 'start the live feed to watch'}</span></div><div class="pb tight">${S.runs.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Started</th><th>Flow</th><th>Trigger</th><th>Status</th><th>Steps</th></tr></thead><tbody>${S.runs.slice(0, 12).map(r => `<tr class="click" data-action="open-run" data-id="${r.id}"><td class="nowrap mono small">${esc(r.startedAt.slice(11))}</td><td>${esc((S.list.find(x => x.id === r.flowId) || {}).name || r.flowId)}</td><td class="mono small">${esc(r.event.type)}<br><span class="hint">${esc(r.event.subject)}</span></td><td>${RUN_PILL(r.status)}</td><td class="num">${r.steps.length}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No runs yet. Publish an event or start the live feed.</div>'}</div></div></div>`;
+  }
+  if (!f) return head + '<div class="panel"><div class="empty">No flows.</div></div>';
+  const runs = S.runs.filter(r => r.flowId === f.id); const run = S.runs.find(r => r.id === state.ui.selRun && r.flowId === f.id) || null; const st = flowStats(f);
+  const flowList = `<div class="panel"><div class="ph"><h3>Flows</h3></div><div class="pb tight"><div class="list">${S.list.map(fl => `<div class="item ${fl.id === f.id ? 'sel' : ''}" data-action="open-flow" data-id="${fl.id}" data-stay="1"><span class="stripe ${fl.status === 'active' ? 'low' : ''}"></span><div><b>${esc(fl.name)}</b><span class="meta">${esc(fl.nodes[0].p.eventType)} · ${flowStats(fl).total} runs</span></div><div>${statusPill(fl.status)}</div></div>`).join('')}</div></div></div>`;
+  if (t === 'runs') {
+    return head + `<div class="split" style="grid-template-columns:minmax(220px,.8fr) minmax(0,2.2fr)">${flowList}<div class="stack">
+      <div class="panel"><div class="ph"><div><h2>${esc(f.name)} · executions</h2><span class="hint">${st.total} runs · ${st.success} ok · ${st.failed} failed · ${st.waiting} waiting</span></div><button class="btn sm" data-action="flow-tab" data-tab="canvas">Open designer</button></div><div class="pb tight">${runs.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Started</th><th>Trigger event</th><th>Status</th><th>Duration</th><th>Summary</th><th></th></tr></thead><tbody>${runs.map(r => `<tr class="click ${run && run.id === r.id ? 'sel' : ''}" data-action="sel-run" data-id="${r.id}"><td class="nowrap mono small">${esc(r.startedAt)}${r.test ? '<br><span class="pill flat">test</span>' : ''}</td><td class="mono small">${esc(r.event.type)}<br><span class="hint">${esc(r.event.subject)} · ${esc(r.event.id.slice(-6))}</span></td><td>${RUN_PILL(r.status)}</td><td class="num">${r.steps.reduce((a, s) => a + s.ms, 0)} ms</td><td class="small">${esc(r.summary || (r.waiting ? 'waiting at ' + (f.nodes.find(n => n.id === r.waiting.nodeId) || {}).name : ''))}</td><td><button class="btn sm" data-action="replay-run" data-id="${r.id}">Replay</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No executions for this flow yet.</div>'}</div></div>
+      ${run ? runDetail(f, run) : ''}</div></div>`;
+  }
+  const node = f.nodes.find(n => n.id === state.ui.selNode); const lastRun = run || runs[0] || null;
+  return head + `<div class="split" style="grid-template-columns:minmax(220px,.7fr) minmax(0,3fr)">${flowList}<div class="stack">
+    <div class="panel"><div class="ph"><div><h2>${esc(f.name)} <span class="hint">v${f.version} · owner ${esc(f.owner)}</span></h2><span class="hint">${esc(f.description || '')}</span></div><div class="row">${statusPill(f.status)}<button class="btn sm" data-action="flow-toggle" data-id="${f.id}">${f.status === 'active' ? 'Pause' : 'Activate'}</button><button class="btn sm" data-action="flow-test" data-id="${f.id}">Test with sample event</button><button class="btn sm" data-action="flow-save" data-id="${f.id}">Save version</button><button class="btn sm" data-action="flow-export" data-id="${f.id}">${state.ui.showExport ? 'Hide JSON' : 'Export JSON'}</button></div></div>
+      <div class="pb tight"><div class="canvas-tools"><span class="hint">${lastRun ? `showing run ${esc(lastRun.id)} · ${lastRun.status}${run ? '' : ' (latest)'}` : 'no run yet; the canvas shows the definition'}</span><div class="row"><label class="small" for="add-type">Add node</label><select id="add-type" class="btn sm" data-change="add-type">${Object.entries(NODE_TYPES).filter(([k]) => k !== 'trigger').map(([k, v]) => `<option value="${k}" ${state.ui.addType === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select><button class="btn sm primary" data-action="add-node" data-id="${f.id}">Add after ${node ? '“' + esc(node.name) + '”' : 'trigger'}</button></div></div>
+      <div class="canvas-wrap" id="canvas-wrap">${renderCanvasSVG(f, lastRun)}</div>
+      <div class="legend" style="padding:8px 14px 12px"><span><i style="background:var(--accent)"></i>trigger</span><span><i style="background:var(--warn)"></i>filter / rule</span><span><i style="background:var(--info)"></i>tool</span><span><i style="background:#7a5fb5"></i>agent</span><span><i style="background:var(--crit)"></i>approval</span><span><i style="background:var(--ok)"></i>notify / task</span><span><i style="background:var(--muted)"></i>wait / delay</span><span class="hint">· drag nodes to arrange · click a node to inspect · badge = runs through the node</span></div></div></div>
+    ${state.ui.showExport ? `<div class="panel"><div class="ph"><h3>flows/${esc(f.id)}.json</h3><span class="hint">what is stored in git and compiled to a subscription + workflow</span></div><div class="pb"><pre class="yaml">${esc(JSON.stringify({ id: f.id, name: f.name, version: f.version, status: f.status, owner: f.owner, trigger: f.nodes[0].p, nodes: f.nodes.map(({ id, type, name, p, x, y }) => ({ id, type, name, params: p, position: [x, y] })), edges: f.edges }, null, 2))}</pre></div></div>` : ''}
+    <div class="grid2">${node ? nodeInspector(f, node, lastRun) : `<div class="panel"><div class="empty">Click a node on the canvas to inspect and edit it.</div></div>`}${lastRun ? runDetail(f, lastRun) : `<div class="panel"><div class="ph"><h3>Executions</h3></div><div class="empty">No run yet. Publish <code>${esc(f.nodes[0].p.eventType)}</code> in Events, or test with a sample event.</div></div>`}</div></div></div>`;
+}
+function nodeInspector(f, n, run) {
+  const t = NODE_TYPES[n.type]; const p = n.p || {}; const step = run && run.steps.find(s => s.nodeId === n.id);
+  const F = (label, key, type, extra = '') => `<div class="field ${type === 'textarea' ? 'wide' : ''}"><label for="nf-${key}">${label}</label>${type === 'select' ? `<select id="nf-${key}" data-node-field="${key}">${extra.map(o => `<option value="${esc(o)}" ${String(p[key]) === String(o) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>` : type === 'textarea' ? `<textarea id="nf-${key}" class="mono" style="min-height:70px" data-node-field="${key}">${esc(p[key] ?? '')}</textarea>` : `<input id="nf-${key}" type="${type}" value="${esc(p[key] ?? '')}" data-node-field="${key}" ${extra}>`}</div>`;
+  let form = '';
+  if (n.type === 'trigger') form = F('Event type', 'eventType', 'select', TOPICS.map(x => x.type)) + F('Filter (optional): data.field op value', 'filter', 'text', 'placeholder="data.status == awaiting_payment"');
+  else if (n.type === 'filter') form = F('Field (path in data / nodes.*)', 'field', 'text') + F('Operator', 'op', 'select', ['==', '!=', '>', '<', '>=', '<=', 'contains', 'exists', 'in']) + F('Value', 'value', 'text');
+  else if (n.type === 'rule') form = F('Rule', 'ruleId', 'select', state.rules.filter(r => r.type !== 'policy').map(r => r.id));
+  else if (n.type === 'tool') form = F('Tool', 'tool', 'select', TOOLS.map(x => x.name)) + F('Arguments (JSON, {{templates}} allowed)', 'args', 'textarea');
+  else if (n.type === 'agent') form = F('Playbook', 'playbook', 'select', PLAYBOOKS.map(x => x.id)) + F('Instruction', 'instruction', 'textarea');
+  else if (n.type === 'approval') form = F('Action to approve (tool)', 'tool', 'select', TOOLS.filter(x => x.cls === 'write' || x.cls === 'communicate').map(x => x.name)) + F('Approver role', 'approverRole', 'select', PEOPLE.map(x => x.role)) + F('Arguments (JSON)', 'args', 'textarea');
+  else if (n.type === 'notify') form = F('Channel', 'channel', 'select', ['#marketing', '#finance', '#it-ops', '#sales-ops', '#general']) + F('Message template', 'text', 'textarea');
+  else if (n.type === 'task') form = F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical']) + F('Owner role', 'ownerRole', 'select', PEOPLE.map(x => x.role)) + F('Title template', 'title', 'text');
+  else if (n.type === 'wait') form = F('Event type', 'eventType', 'select', TOPICS.map(x => x.type)) + F('Key field in that event', 'keyField', 'text') + F('Timeout (0s = check the stream and continue)', 'timeout', 'text');
+  else if (n.type === 'delay') form = F('Duration (e.g. 7d, 4h, 30m)', 'duration', 'text');
+  else if (n.type === 'end') form = F('Run status', 'status', 'select', ['success', 'stopped', 'failed']) + F('Summary template', 'summary', 'text');
+  const outs = f.edges.filter(e => e.from === n.id); const targets = f.nodes.filter(x => x.id !== n.id && x.type !== 'trigger');
+  return `<div class="panel"><div class="ph"><div><h3>${esc(n.name)}</h3><span class="hint">${esc(t.label)} · ${esc(t.hint)} · <code>${esc(n.id)}</code></span></div><div class="row">${n.type !== 'trigger' ? `<button class="btn sm danger" data-action="del-node" data-id="${n.id}">Delete</button>` : ''}</div></div><div class="pb stack">
+    <div class="form"><div class="field"><label for="nf-name">Name</label><input id="nf-name" value="${esc(n.name)}" data-node-field="name"></div>${form}</div>
+    <div><div class="hint" style="margin-bottom:4px">Connections out ${t.branches ? `(branches: ${t.branches.join(' / ')})` : ''}</div>${outs.map(e => `<div class="row small" style="margin-bottom:4px"><span class="tag">${esc(e.label || 'next')}</span>→ ${esc((f.nodes.find(x => x.id === e.to) || {}).name || e.to)} <button class="btn sm" data-action="del-edge" data-from="${e.from}" data-to="${e.to}">remove</button></div>`).join('') || '<div class="hint">none</div>'}
+      ${n.type !== 'end' ? `<form data-form="add-edge" class="row" style="margin-top:6px"><input type="hidden" name="from" value="${n.id}"><select name="to" class="btn sm">${targets.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>${t.branches ? `<select name="label" class="btn sm">${t.branches.map(b => `<option>${b}</option>`).join('')}</select>` : '<input type="hidden" name="label" value="">'}<button class="btn sm" type="submit">Connect</button></form>` : ''}</div>
+    ${step ? `<div><div class="hint" style="margin-bottom:4px">Last execution of this node · ${RUN_PILL(step.status)} ${step.ms} ms · ${esc(step.note)}</div><div class="grid2"><div><div class="hint">Input</div>${json(step.input)}</div><div><div class="hint">Output</div>${json(step.output)}</div></div></div>` : '<div class="hint">No execution data yet for this node.</div>'}
+    <div class="hint">Changes save on blur and apply to the next run. Templates: <code>{{data.x}}</code> trigger payload, <code>{{event.subject}}</code>, <code>{{prev.x}}</code>, <code>{{nodes.&lt;id&gt;.x}}</code>.</div></div></div>`;
+}
+function runDetail(f, run) {
+  return `<div class="panel"><div class="ph"><div><h3>Run ${esc(run.id)} ${RUN_PILL(run.status)}${run.test ? ' <span class="pill flat">test</span>' : ''}</h3><span class="hint">${esc(run.event.type)} · ${esc(run.event.subject)} · started ${esc(run.startedAt)} · correlation ${esc(String(run.correlation || '').slice(-8))}</span></div><div class="row"><button class="btn sm" data-action="ev-chain-nav" data-corr="${esc(run.correlation || '')}">Show in event stream</button></div></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>#</th><th>Node</th><th>Status</th><th>ms</th><th>Note</th></tr></thead><tbody>
+    ${run.steps.map((s, i) => `<tr class="click ${state.ui.selNode === s.nodeId ? 'sel' : ''}" data-action="sel-node" data-id="${s.nodeId}"><td class="num">${i + 1}</td><td><b>${esc(s.name)}</b><br><span class="hint">${esc(s.type)}${s.branch ? ' → ' + esc(s.branch) : ''}</span></td><td>${RUN_PILL(s.status)}</td><td class="num">${s.ms}</td><td class="small">${esc(s.note)}</td></tr>`).join('')}
+    ${run.waiting ? `<tr><td colspan="5" class="small" style="background:var(--warn-soft)">Parked at "${esc((f.nodes.find(n => n.id === run.waiting.nodeId) || {}).name)}" since ${esc(run.waiting.since)}: ${run.waiting.kind === 'approval' ? `waiting for approval <code>${esc(run.waiting.approvalId)}</code>` : run.waiting.kind === 'event' ? `waiting for <code>${esc(run.waiting.eventType)}</code> with ${esc(run.waiting.keyField)} = ${esc(String(run.waiting.keyVal))}` : `waiting for timer <code>${esc(run.waiting.timerId)}</code>`}</td></tr>` : run.summary ? `<tr><td colspan="5" class="small">${esc(run.summary)}</td></tr>` : ''}
+  </tbody></table></div></div></div>`;
 }
 
 // ---------- shared view helpers
 const NAV = [
-  ['overview', 'Overview'], ['kb', 'Knowledge base'], ['rules', 'Rules'], ['events', 'Events'], ['tools', 'Tools'], ['playbooks', 'Playbooks'], ['lab', 'Test lab'], ['approvals', 'Approvals & audit'],
+  ['overview', 'Overview'], ['kb', 'Knowledge base'], ['rules', 'Rules'], ['events', 'Events'], ['flows', 'Flows'], ['tools', 'Tools'], ['playbooks', 'Playbooks'], ['lab', 'Test lab'], ['approvals', 'Approvals & audit'],
 ];
 const sevPill = s => `<span class="pill ${s === 'critical' || s === 'high' ? 'crit' : s === 'medium' ? 'warn' : 'info'}">${esc(s)}</span>`;
 const statusPill = s => `<span class="pill ${s === 'active' ? 'ok' : s === 'shadow' ? 'info' : s === 'paused' ? 'warn' : s === 'ok' ? 'ok' : s === 'warn' ? 'warn' : ''}">${esc(s)}</span>`;
@@ -1136,6 +1423,7 @@ function viewOverview() {
     <div class="tile"><span class="lab">Knowledge</span><span class="val">${state.docs.length}</span><span class="sub">documents · ${chunks} chunks indexed</span></div>
     <div class="tile ${state.gaps.length ? 'warn' : 'ok'}"><span class="lab">Knowledge gaps</span><span class="val">${state.gaps.length}</span><span class="sub">unanswered questions</span></div>
     <div class="tile ${state.bus.dlq.filter(x => !x.replayed).length ? 'crit' : 'ok'}" data-action="nav" data-view="events" style="cursor:pointer"><span class="lab">Event bus</span><span class="val">${state.bus.stream.length}</span><span class="sub">events this session · ${state.bus.dlq.filter(x => !x.replayed).length} dead-lettered · ${state.bus.live ? 'live feed on' : 'consumer lag 0'}</span></div>
+    <div class="tile ${state.flows.runs.some(r => r.status === 'failed') ? 'crit' : ''}" data-action="nav" data-view="flows" style="cursor:pointer"><span class="lab">Flows</span><span class="val">${state.flows.list.filter(f => f.status === 'active').length}</span><span class="sub">active · ${state.flows.runs.length} runs · ${state.flows.runs.filter(r => r.status === 'waiting').length} waiting</span></div>
     <div class="tile ${healthy < TOOLS.length ? 'warn' : 'ok'}"><span class="lab">Tools healthy</span><span class="val">${healthy}/${TOOLS.length}</span><span class="sub">last contract test 02:30</span></div>
   </div>
   <div class="grid2">
@@ -1456,9 +1744,10 @@ function viewApprovals() {
   </tbody></table></div></div></div></div>`;
 }
 
-const VIEWS = { overview: viewOverview, kb: viewKB, rules: viewRules, events: viewEvents, triggers: viewEvents, tools: viewTools, playbooks: viewPlaybooks, lab: viewLab, approvals: viewApprovals };
+const VIEWS = { overview: viewOverview, kb: viewKB, rules: viewRules, events: viewEvents, triggers: viewEvents, flows: viewFlows, tools: viewTools, playbooks: viewPlaybooks, lab: viewLab, approvals: viewApprovals };
 function render() {
   renderNav();
+  const now = Date.now(); for (const k of Object.keys(state.flows.pulse)) if (now - state.flows.pulse[k] > 1500) delete state.flows.pulse[k];
   $('#main').innerHTML = (VIEWS[state.ui.view] || viewOverview)();
   const c = $('#chat'); if (c) c.scrollTop = c.scrollHeight;
   save();
@@ -1471,10 +1760,25 @@ const A = {
   'kb-tab'(d) { state.ui.kbTab = d.tab; render(); },
   'trig-tab'(d) { state.ui.trigTab = d.tab; render(); },
   'ev-tab'(d) { state.ui.evTab = d.tab; render(); },
+  'flow-tab'(d) { state.ui.flowTab = d.tab; render(); },
+  'open-flow'(d) { state.ui.view = 'flows'; state.ui.flowId = d.id; if (!d.stay || state.ui.flowTab === 'monitor') state.ui.flowTab = 'canvas'; state.ui.selNode = null; state.ui.selRun = null; render(); },
+  'open-run'(d) { const r = state.flows.runs.find(x => x.id === d.id); if (!r) return; state.ui.view = 'flows'; state.ui.flowId = r.flowId; state.ui.flowTab = 'runs'; state.ui.selRun = r.id; state.ui.selNode = null; render(); },
+  'sel-run'(d) { state.ui.selRun = state.ui.selRun === d.id ? null : d.id; render(); },
+  'sel-node'(d) { state.ui.selNode = state.ui.selNode === d.id ? null : d.id; state.ui.selEdge = null; render(); },
+  'ev-chain-nav'(d) { state.ui.view = 'events'; state.ui.evTab = 'stream'; state.ui.evFilter = d.corr; render(); },
+  'flow-toggle'(d) { const f = state.flows.list.find(x => x.id === d.id); f.status = f.status === 'active' ? 'paused' : 'active'; audit('console user', 'flow.status', `${f.id} → ${f.status}`); render(); toast(`${f.name} is now ${f.status}`); },
+  'flow-save'(d) { const f = state.flows.list.find(x => x.id === d.id); f.version++; audit('console user', 'flow.version', `${f.id} v${f.version} saved to flows/${f.id}.json`); render(); toast(`Saved as v${f.version} (pull request to flows/${f.id}.json)`); },
+  'flow-export'() { state.ui.showExport = !state.ui.showExport; render(); },
+  'flow-test'(d) { const f = state.flows.list.find(x => x.id === d.id); const type = f.nodes[0].p.eventType; const data = SAMPLE_DATA[type] || { path: '/pricing', site: 'www.example.com', invoice_id: 'INV-TEST', amount: 300, order_id: 'SO-10231', status: 'awaiting_payment', customer: 'Horváth Kft.', days_in_status: 12, failures: 3, document_id: 'finance-handbook', chunks: 3, rule: 'seo-organic-drop' }; const ev = { id: ulid(), type, subject: data.path || data.site || data.invoice_id || data.order_id || data.document_id || 'test', key: data.path || data.site || data.invoice_id || data.order_id || 'test', time: timeNow(), data, correlation: 'test-' + Date.now() }; const run = startRun(f, ev, { test: true }); state.ui.selRun = run.id; state.ui.flowTab = 'canvas'; audit('console user', 'flow.test', `${f.id} test run ${run.id}: ${run.status}`); render(); toast(`Test run ${run.status}: ${run.steps.length} steps, no side effects`); },
+  'replay-run'(d) { const r = state.flows.runs.find(x => x.id === d.id); const f = state.flows.list.find(x => x.id === r.flowId); const run = startRun(f, { ...r.event, id: ulid(), correlation: r.correlation }, { test: r.test }); state.ui.selRun = run.id; audit('console user', 'flow.replay', `${r.id} → ${run.id}`); render(); toast('Replayed with the original event'); },
+  'new-flow'() { const id = 'new-flow-' + (state.flows.list.filter(f => f.id.startsWith('new-flow')).length + 1); const f = { id, name: 'New flow', owner: 'it', status: 'paused', version: 1, description: 'Describe what this flow handles.', nodes: [{ id: 'trigger', type: 'trigger', name: 'On event', p: { eventType: 'erp.invoice.posted', filter: '' } }, { id: 'end', type: 'end', name: 'Done', p: { status: 'success', summary: 'ok' } }], edges: [{ from: 'trigger', to: 'end', label: '' }] }; layoutFlow(f); state.flows.list.push(f); state.ui.view = 'flows'; state.ui.flowId = id; state.ui.flowTab = 'canvas'; state.ui.selNode = 'trigger'; audit('console user', 'flow.created', id); render(); },
+  'add-node'(d) { const f = state.flows.list.find(x => x.id === d.id); const type = state.ui.addType || 'tool'; const after = f.nodes.find(n => n.id === state.ui.selNode) || f.nodes[0]; const id = type + '-' + Math.random().toString(36).slice(2, 6); const defaults = { filter: { field: 'data.status', op: '==', value: '' }, rule: { ruleId: state.rules.find(r => r.type !== 'policy').id }, tool: { tool: 'kb.search', args: '{"query":"{{event.subject}}"}' }, agent: { playbook: PLAYBOOKS[0].id, instruction: 'Summarise the evidence and recommend an action.' }, approval: { tool: 'slack.post_message', args: '{"channel":"#general","text":"{{event.subject}}"}', approverRole: 'marketing_lead' }, notify: { channel: '#it-ops', text: '{{event.type}} on {{event.subject}}' }, task: { severity: 'medium', ownerRole: 'it_lead', title: '{{event.type}} on {{event.subject}}' }, wait: { eventType: 'erp.invoice.paid', keyField: 'invoice_id', timeout: '7d' }, delay: { duration: '1d' }, end: { status: 'success', summary: 'done' } }; const n = { id, type, name: NODE_TYPES[type].label, p: defaults[type] || {}, x: after.x + 240, y: after.y + (f.edges.filter(e => e.from === after.id).length ? 96 : 0) }; f.nodes.push(n); const outs = f.edges.filter(e => e.from === after.id); if (outs.length === 1 && !outs[0].label && type !== 'end') { const old = outs[0]; f.edges.push({ from: id, to: old.to, label: '' }); old.to = id; } else f.edges.push({ from: after.id, to: id, label: NODE_TYPES[after.type].branches ? NODE_TYPES[after.type].branches[0] : '' }); state.ui.selNode = id; render(); },
+  'del-node'(d) { const f = state.flows.list.find(x => x.id === state.ui.flowId); f.nodes = f.nodes.filter(n => n.id !== d.id); f.edges = f.edges.filter(e => e.from !== d.id && e.to !== d.id); state.ui.selNode = null; render(); },
+  'del-edge'(d) { const f = state.flows.list.find(x => x.id === state.ui.flowId); f.edges = f.edges.filter(e => !(e.from === d.from && e.to === d.to)); render(); },
   'ev-open'(d) { state.ui.evOpen = state.ui.evOpen === d.id ? null : d.id; render(); },
   'ev-chain'(d) { state.ui.evFilter = d.corr; state.ui.evOpen = null; render(); },
   'toggle-live'() { if (state.bus.live) { stopLive(); toast('Live feed stopped'); } else { startLive(); toast('Live feed started: one event every 3 seconds'); } render(); },
-  'fire-timer'(d) { const t = state.bus.timers.find(x => x.id === d.id); if (!t) return; state.bus.timers = state.bus.timers.filter(x => x.id !== d.id); emit(t.type, { subject: t.key, key: t.key, actor: 'timer-service', source: 'timer-service', data: t.type === 'day.closed' ? { date: t.key } : { deadline_id: t.key, reason: t.reason }, idem: `timer:${t.id}:${Date.now()}` }); state.ui.evTab = 'stream'; render(); toast(`${t.type} emitted for ${t.key}`); },
+  'fire-timer'(d) { const t = state.bus.timers.find(x => x.id === d.id); if (!t) return; state.bus.timers = state.bus.timers.filter(x => x.id !== d.id); if (t.type === 'flow.delay.elapsed') { resumeOnTimer(t); if (!d.stay) state.ui.view = 'flows'; render(); toast('Timer fired; run resumed'); return; } emit(t.type, { subject: t.key, key: t.key, actor: 'timer-service', source: 'timer-service', data: t.type === 'day.closed' ? { date: t.key } : { deadline_id: t.key, reason: t.reason }, idem: `timer:${t.id}:${Date.now()}` }); if (!d.stay) state.ui.evTab = 'stream'; render(); toast(`${t.type} emitted for ${t.key}`); },
   'emit-day-closed'() { emit('day.closed', { subject: dayStr(-1), key: dayStr(-1), actor: 'timer-service', source: 'timer-service', data: { date: dayStr(-1) }, idem: 'day:' + Date.now() }); state.triggers.schedules[0].lastRun = nowStr(); state.ui.evTab = 'stream'; render(); toast('day.closed emitted; collectors ran'); },
   'replay-dlq'(d) { const x = state.bus.dlq.find(y => y.id === d.id); const ev = state.bus.stream.find(e => e.id === x.eventId); if (!ev) return; try { const note = HANDLERS[x.consumer](ev); const c = ev.consumers.find(k => k.consumer === x.consumer); if (c) { c.result = 'ok'; c.note = 'replayed: ' + (note || 'ok'); } ev.status = 'delivered'; x.replayed = true; audit('console user', 'dlq.replayed', `${ev.type} #${ev.seq} → ${x.consumer}`); addEvent('dlq', `${ev.type} replayed`, x.consumer); toast('Replayed successfully'); } catch (err) { x.attempts++; x.error = err.message; toast('Replay failed again'); } render(); },
   'lab-tab'(d) { state.ui.labTab = d.tab; render(); },
@@ -1499,8 +1803,8 @@ const A = {
   'ack-task'(d) { const t = state.tasks.find(x => x.id === d.id); t.status = 'acked'; audit('console user', 'task.acked', t.id); emit('task.acknowledged', { subject: t.id, key: t.id, actor: 'user:console', data: { task_id: t.id }, idem: `ack:${t.id}` }); render(); toast('Task acknowledged'); },
   'reset-scenario'() { resetScenario(); render(); toast('Metrics restored'); },
   'chat-q'(d) { doChat(d.q); },
-  approve(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'approved'; a.decidedAt = nowStr(); a.result = runTool(a.tool, { ...a.args, dry_run: false }); if (a.tool === 'cms.remove_noindex' || a.tool === 'cms.set_page_meta') delete state.pageFacts[a.args.path]; audit('console user', 'approval.approved', `${a.id} ${a.tool} → executed`); emit('approval.decided', { subject: a.id, key: a.id, actor: 'user:console', data: { approval_id: a.id, decision: 'approved', tool: a.tool, task_id: a.taskId }, idem: `decided:${a.id}` }); addEvent('approval', `${a.tool} approved`, `executed by the assistant after approval`); if (a.taskId) { const t = state.tasks.find(x => x.id === a.taskId); if (t) { t.status = 'done'; audit('agent:monitoring', 'task.done', `${t.id} resolved by ${a.tool}`); } } render(); toast('Approved and executed'); },
-  reject(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'rejected'; a.decidedAt = nowStr(); audit('console user', 'approval.rejected', `${a.id} ${a.tool}`); emit('approval.decided', { subject: a.id, key: a.id, actor: 'user:console', data: { approval_id: a.id, decision: 'rejected', tool: a.tool, task_id: a.taskId }, idem: `decided:${a.id}` }); addEvent('approval', `${a.tool} rejected`, 'the agent will record the correction and lower autonomy for this action'); render(); toast('Rejected. The correction is recorded for the learning loop.'); },
+  approve(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'approved'; a.decidedAt = nowStr(); a.result = runTool(a.tool, { ...a.args, dry_run: false }); if (a.tool === 'cms.remove_noindex' || a.tool === 'cms.set_page_meta') delete state.pageFacts[a.args.path]; audit('console user', 'approval.approved', `${a.id} ${a.tool} → executed`); resumeOnApproval(a); emit('approval.decided', { subject: a.id, key: a.id, actor: 'user:console', data: { approval_id: a.id, decision: 'approved', tool: a.tool, task_id: a.taskId }, idem: `decided:${a.id}` }); addEvent('approval', `${a.tool} approved`, `executed by the assistant after approval`); if (a.taskId) { const t = state.tasks.find(x => x.id === a.taskId); if (t) { t.status = 'done'; audit('agent:monitoring', 'task.done', `${t.id} resolved by ${a.tool}`); } } render(); toast('Approved and executed'); },
+  reject(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'rejected'; a.decidedAt = nowStr(); audit('console user', 'approval.rejected', `${a.id} ${a.tool}`); resumeOnApproval(a); emit('approval.decided', { subject: a.id, key: a.id, actor: 'user:console', data: { approval_id: a.id, decision: 'rejected', tool: a.tool, task_id: a.taskId }, idem: `decided:${a.id}` }); addEvent('approval', `${a.tool} rejected`, 'the agent will record the correction and lower autonomy for this action'); render(); toast('Rejected. The correction is recorded for the learning loop.'); },
   'run-evals'() { const rows = GOLDEN.map(g => { const h = kbSearch(g.q)[0]; const expected = state.docs.find(d => d.id === g.doc); return { q: g.q, expected: expected ? expected.title : g.doc, got: h && h.doc.title, section: h && h.chunk.heading, score: h && h.score, pass: !!h && h.doc.id === g.doc }; }); state.evalRun = { rows, pass: rows.filter(r => r.pass).length, at: nowStr() }; audit('console user', 'eval.run', `golden set: ${state.evalRun.pass}/${GOLDEN.length}`); render(); },
 };
 function doSearch(q, dept) { state.kbQuery = q; const terms = expandQuery(q); const hits = kbSearch(q, { department: dept || undefined }); state.kbResults = { hits, terms, department: dept }; if (!hits.length && q.trim() && !state.gaps.some(g => g.q === q)) state.gaps.unshift({ q, asked: 1, by: 'console user', at: TODAY }); audit('console user', 'kb.search', `"${q}" → ${hits.length} hits`); render(); }
@@ -1534,6 +1838,7 @@ const FORMS = {
     else out = callTool(name, args, 'console user');
     state.toolResult = { tool: name, ...out, ms: Math.max(12, Math.round(performance.now() - t0 + 40 + Math.random() * 120)) }; render();
   },
+  'add-edge'(fd) { const f = state.flows.list.find(x => x.id === state.ui.flowId); const from = fd.get('from'), to = fd.get('to'), label = fd.get('label') || ''; if (from === to || f.edges.some(e => e.from === from && e.to === to && e.label === label)) return; f.edges.push({ from, to, label }); render(); },
   publish(fd) { let data; try { data = JSON.parse(fd.get('data') || '{}'); } catch (e) { toast('Data is not valid JSON: ' + e.message); return; } const type = fd.get('type'); const ev = emit(type, { subject: fd.get('subject'), key: fd.get('subject'), actor: 'user:console', source: 'console', data, idem: fd.get('idem') || undefined }); state.pubResult = { correlation: ev.correlation, id: ev.id }; state.ui.pubType = type; render(); toast(ev.status === 'duplicate' ? 'Duplicate: dropped by the idempotency check' : ev.status === 'dead-lettered' ? 'Published; one consumer failed and the event went to the dead-letter queue' : `Published; ${ev.consumers.length} consumer(s) processed it in ${ev.latency} ms`); },
   scenario(fd) { state.scenario = { page: fd.get('page'), cause: fd.get('cause'), drop: +fd.get('drop'), days: +fd.get('days'), applied: state.scenario.applied }; const { task } = applyScenario(); render(); toast(task ? `Rule fired; agent trace ready for ${task.page}` : 'No active rule fired with these numbers'); },
   chat(fd, form) { const q = (fd.get('q') || '').trim(); if (!q) return; form.reset(); doChat(q); },
@@ -1552,6 +1857,8 @@ document.addEventListener('submit', e => {
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.change === 'rule-filter') { state.ui.ruleFilter = el.value; render(); return; }
+  if (el.dataset.change === 'add-type') { state.ui.addType = el.value; return; }
+  if (el.dataset.nodeField) { const f = state.flows.list.find(x => x.id === state.ui.flowId); const n = f && f.nodes.find(x => x.id === state.ui.selNode); if (!n) return; if (el.dataset.nodeField === 'name') n.name = el.value; else n.p[el.dataset.nodeField] = el.value; audit('console user', 'flow.edited', `${f.id}/${n.id}: ${el.dataset.nodeField}`); render(); return; }
   if (el.dataset.change === 'ev-filter') { state.ui.evFilter = el.value; render(); return; }
   if (el.dataset.change === 'ev-fail') { state.bus.failNext = el.checked; return; }
   if (el.dataset.change === 'pub-type') { state.ui.pubType = el.value; state.pubResult = null; render(); return; }
@@ -1568,6 +1875,16 @@ document.addEventListener('change', e => {
     if (state.lastRuleSim && state.lastRuleSim.ruleId === r.id) A['simulate-rule']({ id: r.id }); else render();
   }
 });
+let drag = null;
+function svgPoint(svg, e) { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest && e.target.closest('#canvas [data-node]'); const edge = e.target.closest && e.target.closest('#canvas [data-edge]');
+  if (edge && !g) { state.ui.selEdge = edge.dataset.edge; state.ui.selNode = null; render(); return; }
+  if (!g) return; const svg = g.closest('svg'); const f = state.flows.list.find(x => x.id === state.ui.flowId); const n = f && f.nodes.find(x => x.id === g.dataset.node); if (!n) return;
+  const p = svgPoint(svg, e); drag = { n, dx: p.x - n.x, dy: p.y - n.y, sx: e.clientX, sy: e.clientY, moved: false, svg }; e.preventDefault();
+});
+document.addEventListener('pointermove', e => { if (!drag) return; if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 4) drag.moved = true; if (!drag.moved) return; const p = svgPoint(drag.svg, e); drag.n.x = Math.max(0, Math.round(p.x - drag.dx)); drag.n.y = Math.max(0, Math.round(p.y - drag.dy)); const f = state.flows.list.find(x => x.id === state.ui.flowId); const run = state.flows.runs.find(r => r.id === state.ui.selRun) || state.flows.runs.find(r => r.flowId === f.id) || null; const wrap = document.getElementById('canvas-wrap'); if (wrap) { wrap.innerHTML = renderCanvasSVG(f, run); drag.svg = wrap.querySelector('svg'); } });
+document.addEventListener('pointerup', e => { if (!drag) return; const d = drag; drag = null; if (!d.moved) { state.ui.selNode = state.ui.selNode === d.n.id ? null : d.n.id; state.ui.selEdge = null; } render(); });
 document.addEventListener('input', e => { const el = e.target; if (el.dataset.input === 'range-out') { const o = document.getElementById(el.dataset.out); if (o) o.textContent = el.value; } });
 
 function start() {

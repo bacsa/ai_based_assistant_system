@@ -37,6 +37,9 @@ Events              Live stream (every event with its consumers, acks, latency, 
                     Producers & timers (timer service with armed timers, webhook ingress, outbox/CDC connectors,
                                         the periodic remainder: collectors and reconciliation)
                     Dead letters (failed deliveries with replay)
+Flows               Monitor board (live cards per flow) · Canvas (nodes, ports, branches, live run overlay)
+                    Inspector (parameters, last input/output) · Executions (per-node steps, replay)
+                    Test run with a sample event · activate / pause · export JSON   (design in doc 10)
 Tools               catalogue (server, class, risk, health) · spec the model reads
                     test bench: form from the input schema, dry run, live run through policy
 Playbooks           steps, allowed tools, autonomy level, "done" definition
