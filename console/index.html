@@ -1,0 +1,1282 @@
+<title>Assistant Control Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a fixed left rail of sections; each section is a working surface built from list + detail splits.
+   Semantic colour (ok / warn / crit / info) marks state only; the accent is reserved for actions and selection. */
+:root{
+  --bg:#f2f4f1; --panel:#ffffff; --panel-2:#e9ece7; --line:#d3d8d1; --fg:#1a221e; --muted:#5b6660;
+  --accent:#1e6b74; --accent-ink:#ffffff; --accent-soft:#d9eaec;
+  --ok:#2d7a4e; --warn:#a9680c; --crit:#b23a2d; --info:#3a5c9f;
+  --ok-soft:#dff0e5; --warn-soft:#f6ead4; --crit-soft:#f6dedb; --info-soft:#e0e7f5;
+  --font-ui:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:6px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121715; --panel:#1a211e; --panel-2:#222b27; --line:#2f3a35; --fg:#e4e9e6; --muted:#94a19a;
+    --accent:#64b7bf; --accent-ink:#0e1a1c; --accent-soft:#1c3337;
+    --ok:#6fc28f; --warn:#e2a64c; --crit:#e67c70; --info:#8aa6e3;
+    --ok-soft:#1b3326; --warn-soft:#3a2c13; --crit-soft:#3c1f1b; --info-soft:#1f2a42;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121715; --panel:#1a211e; --panel-2:#222b27; --line:#2f3a35; --fg:#e4e9e6; --muted:#94a19a;
+  --accent:#64b7bf; --accent-ink:#0e1a1c; --accent-soft:#1c3337;
+  --ok:#6fc28f; --warn:#e2a64c; --crit:#e67c70; --info:#8aa6e3;
+  --ok-soft:#1b3326; --warn-soft:#3a2c13; --crit-soft:#3c1f1b; --info-soft:#1f2a42;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:14px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--panel)}
+a{color:var(--accent)}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance}
+h1{font-size:20px} h2{font-size:16px} h3{font-size:14px}
+p{margin:0}
+code,pre,.mono{font-family:var(--font-mono);font-size:12.5px}
+pre{margin:0;white-space:pre-wrap;word-break:break-word}
+
+.app{display:grid;grid-template-columns:228px minmax(0,1fr);min-height:100%}
+.nav{background:var(--panel);border-right:1px solid var(--line);padding-block:18px 14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:12px;
+  position:sticky;top:env(safe-area-inset-top,0px);align-self:start;height:100dvh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.brand .mark{width:28px;height:28px;border-radius:7px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:600;font-size:13px}
+.brand b{display:block;font-size:14px;line-height:1.2}
+.brand small{color:var(--muted);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.nav button{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:var(--radius);color:var(--fg)}
+.nav button:hover{background:var(--panel-2)}
+.nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:500}
+.nav button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.nav .count{font-size:11px;background:var(--panel-2);color:var(--muted);padding:1px 7px;border-radius:999px;min-width:20px;text-align:center}
+.nav button.on .count{background:var(--panel);color:var(--accent)}
+.nav .grow{flex:1}
+.nav .foot{border-top:1px solid var(--line);padding-top:10px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.nav .foot .lnk{all:unset;cursor:pointer;color:var(--accent);padding:2px 0}
+.nav .foot .lnk:focus-visible{outline:2px solid var(--accent)}
+
+.main{padding-block:22px 40px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));min-width:0;display:flex;flex-direction:column;gap:18px}
+.page-h{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 18px}
+.page-h p{color:var(--muted);max-width:68ch;margin-top:3px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:7px 12px;cursor:pointer;font-weight:500;line-height:1.2}
+.btn:hover{background:var(--panel-2)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn.danger{color:var(--crit)}
+.btn[disabled]{opacity:.55;cursor:default}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tile .lab{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.tile .val{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .sub{font-size:12px;color:var(--muted)}
+.tile.warn .val{color:var(--warn)} .tile.crit .val{color:var(--crit)} .tile.ok .val{color:var(--ok)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;align-items:start}
+.split{display:grid;grid-template-columns:minmax(260px,1fr) minmax(0,1.6fr);gap:14px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);min-width:0}
+.panel>.ph{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.panel>.ph h2,.panel>.ph h3{font-size:13.5px}
+.panel>.pb{padding:14px}
+.panel>.pb.tight{padding:0}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.hint{font-size:12px;color:var(--muted)}
+
+.tabs{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--line)}
+.tabs button{all:unset;cursor:pointer;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted);margin-bottom:-1px}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--accent);font-weight:500}
+.tabs button:focus-visible{outline:2px solid var(--accent)}
+
+.tw{overflow-x:auto;min-width:0}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:500;text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr.click{cursor:pointer}
+.tbl tr.click:hover td{background:var(--panel-2)}
+.tbl tr.sel td{background:var(--accent-soft)}
+.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl .nowrap{white-space:nowrap}
+
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:500;white-space:nowrap;background:var(--panel-2);color:var(--muted);border:1px solid transparent}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.crit{background:var(--crit-soft);color:var(--crit)} .pill.info{background:var(--info-soft);color:var(--info)}
+.pill.acc{background:var(--accent-soft);color:var(--accent)}
+.pill.flat::before{display:none}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;background:var(--panel-2);color:var(--muted);font-size:11.5px;font-family:var(--font-mono)}
+
+.list{display:flex;flex-direction:column}
+.item{display:grid;grid-template-columns:4px 1fr auto;gap:0 12px;padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer;align-items:center}
+.item:last-child{border-bottom:0}
+.item:hover{background:var(--panel-2)}
+.item.sel{background:var(--accent-soft)}
+.item .stripe{width:4px;height:100%;min-height:28px;border-radius:2px;background:var(--line)}
+.item .stripe.high,.item .stripe.critical{background:var(--crit)} .item .stripe.medium{background:var(--warn)} .item .stripe.low{background:var(--info)}
+.item b{display:block;font-weight:500}
+.item .meta{font-size:12px;color:var(--muted)}
+
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field.wide{grid-column:1/-1}
+.field label{font-size:12px;color:var(--muted)}
+.field input,.field select,.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:var(--radius);padding:7px 9px;min-width:0;width:100%}
+.field textarea{min-height:120px;resize:vertical}
+.field input:focus-visible,.field select:focus-visible,.field textarea:focus-visible{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+.field .range{display:flex;gap:10px;align-items:center}
+.field .range input{padding:0}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px}
+
+.yaml{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);padding:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.5;overflow-x:auto}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0;word-break:break-word}
+
+.chart{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px;border-radius:2px}
+
+.trace{display:flex;flex-direction:column}
+.step{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.step:last-child{border-bottom:0}
+.step .n{width:24px;height:24px;border-radius:50%;background:var(--panel-2);display:grid;place-items:center;font-size:11.5px;font-weight:500;color:var(--muted)}
+.step .n.ok{background:var(--ok-soft);color:var(--ok)} .step .n.act{background:var(--warn-soft);color:var(--warn)}
+.step .call{font-family:var(--font-mono);font-size:12.5px;word-break:break-word}
+.step .res{font-size:13px;margin-top:3px}
+.step .note{font-size:12.5px;color:var(--muted);margin-top:2px}
+
+.msg{border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;background:var(--bg)}
+.msg .from{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px}
+
+.chat{display:flex;flex-direction:column;gap:10px;max-height:460px;overflow:auto;padding:14px}
+.bub{max-width:min(60ch,92%);padding:9px 12px;border-radius:10px;background:var(--panel-2)}
+.bub.me{align-self:flex-end;background:var(--accent-soft)}
+.bub .src{margin-top:6px;font-size:12px;color:var(--muted)}
+.chat-in{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.chat-in input{flex:1;border:1px solid var(--line);background:var(--bg);border-radius:var(--radius);padding:8px 10px;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{all:unset;cursor:pointer;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel)}
+.chip:hover{background:var(--panel-2)}
+.chip:focus-visible{outline:2px solid var(--accent)}
+
+.hit{padding:10px 0;border-bottom:1px solid var(--line)}
+.hit:last-child{border-bottom:0}
+.hit .t{font-weight:500}
+.hit mark{background:var(--warn-soft);color:inherit;padding:0 2px;border-radius:2px}
+.hit .path{font-size:12px;color:var(--muted)}
+.score{font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
+
+.pipe{display:flex;flex-wrap:wrap;gap:6px}
+.pipe span{font-size:12px;padding:3px 9px;border-radius:999px;background:var(--panel-2);color:var(--muted)}
+.pipe span.done{background:var(--ok-soft);color:var(--ok)}
+.pipe span.run{background:var(--accent-soft);color:var(--accent)}
+
+.appr{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:var(--radius);padding:12px 14px;background:var(--panel);display:flex;flex-direction:column;gap:8px}
+.appr.done{border-left-color:var(--ok)} .appr.rej{border-left-color:var(--crit)}
+.empty{padding:22px 14px;text-align:center;color:var(--muted);font-size:13px}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:999px;font-size:13px;z-index:50;max-width:min(90vw,60ch);box-shadow:0 6px 20px rgba(0,0,0,.18)}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .nav{position:static;height:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding-block:10px;padding-right:max(16px,env(safe-area-inset-right,0px));align-items:center}
+  .brand{margin:0 8px 0 0} .brand small{display:none} .brand b{white-space:nowrap;font-size:13px}
+  .nav button{white-space:nowrap;padding:6px 10px} .nav .grow,.nav .foot{display:none}
+  .main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .split{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:no-preference){ .btn,.nav button{transition:background .12s} }
+</style>
+
+<div class="app">
+  <nav class="nav" id="nav" aria-label="Sections"></nav>
+  <main class="main" id="main"></main>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+<script>
+/* ============================================================
+   Assistant Control Room – prototype.
+   Everything runs in the browser against demo data. The engines below
+   (knowledge search, rule evaluation, policy decisions, tool mocks) are
+   small but real, so the console can be exercised end to end.
+   ============================================================ */
+
+// ---------- utilities
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad2 = n => String(n).padStart(2, '0');
+const fmtDate = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const parseDate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const today = new Date(); today.setHours(0, 0, 0, 0);
+const TODAY = fmtDate(today);
+const dayStr = n => fmtDate(addDays(today, n));
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const median = arr => { const a = [...arr].sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+const pct = r => r == null ? '–' : Math.round(r * 100) + ' %';
+const nowStr = () => { const d = new Date(); return `${fmtDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const uid = (p = 'id') => p + '-' + Math.random().toString(36).slice(2, 8);
+let toastTimer;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200); }
+
+function yamlLines(v, ind) {
+  const pad = '  '.repeat(ind); const out = [];
+  const isObj = x => x && typeof x === 'object';
+  const scalar = x => (typeof x === 'string' && (/[:#{}\[\],]|^\s|\s$|^$/.test(x) || /^\d/.test(x) === false && /^(true|false|null|yes|no)$/i.test(x))) ? JSON.stringify(x) : String(x);
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      if (isObj(x)) { const sub = yamlLines(x, ind + 1); out.push(pad + '- ' + sub[0].trim()); out.push(...sub.slice(1)); }
+      else out.push(pad + '- ' + scalar(x));
+    }
+  } else if (isObj(v)) {
+    for (const [k, x] of Object.entries(v)) {
+      if (x === undefined) continue;
+      if (isObj(x) && (Array.isArray(x) ? x.length : Object.keys(x).length)) { out.push(pad + k + ':'); out.push(...yamlLines(x, ind + 1)); }
+      else out.push(pad + k + ': ' + (isObj(x) ? (Array.isArray(x) ? '[]' : '{}') : scalar(x)));
+    }
+  }
+  return out;
+}
+const toYaml = v => yamlLines(v, 0).join('\n');
+
+// ---------- demo data
+const KEY_PAGES = ['/pricing', '/', '/blog/seo-checklist', '/product/erp'];
+const ALL_PAGES = [...KEY_PAGES, '/contact'];
+const PAGE_BASE = { '/pricing': [180, 5200], '/': [420, 15000], '/blog/seo-checklist': [260, 9000], '/product/erp': [95, 3100], '/contact': [60, 1400] };
+
+function genMetrics() {
+  const m = {}; let seed = 7;
+  for (const [page, [c, i]] of Object.entries(PAGE_BASE)) {
+    const rnd = mulberry32(seed++); const rows = [];
+    for (let d = 42; d >= 1; d--) {
+      const date = addDays(today, -d); const wd = date.getDay();
+      const wk = (wd === 0 || wd === 6) ? 0.55 : 1; const noise = 0.86 + rnd() * 0.28;
+      rows.push({ date: fmtDate(date), clicks: Math.round(c * wk * noise), impressions: Math.round(i * wk * (0.9 + rnd() * 0.2)) });
+    }
+    m[page] = rows;
+  }
+  return m;
+}
+
+const PEOPLE = [
+  { role: 'seo_owner', name: 'Kata Nagy', team: 'Product marketing', channel: '#marketing', backup: 'marketing_lead' },
+  { role: 'marketing_lead', name: 'Péter Szabó', team: 'Marketing', channel: '#marketing', backup: 'head_of_digital' },
+  { role: 'head_of_digital', name: 'Réka Molnár', team: 'Management', channel: '@reka', backup: '–' },
+  { role: 'finance_lead', name: 'Anna Kovács', team: 'Finance', channel: '#finance', backup: 'cfo' },
+  { role: 'cfo', name: 'Gábor Tóth', team: 'Management', channel: '@gabor', backup: '–' },
+  { role: 'it_lead', name: 'Bence Farkas', team: 'IT operations', channel: '#it-ops', backup: 'it_admin' },
+  { role: 'sales_ops', name: 'Dóra Kiss', team: 'Sales operations', channel: '#sales-ops', backup: 'sales_lead' },
+  { role: 'procurement_lead', name: 'Zsófia Balogh', team: 'Procurement', channel: '#procurement', backup: 'cfo' },
+];
+const SYSTEMS = [
+  { name: 'ERP (in-house)', type: 'in-house', access: 'REST API + DB read replica', auth: 'service account', test: 'yes', crit: 'high', mcp: 'mcp-erp' },
+  { name: 'CMS (in-house)', type: 'in-house', access: 'REST API', auth: 'service account', test: 'yes', crit: 'medium', mcp: 'mcp-cms' },
+  { name: 'Google Search Console', type: 'SaaS', access: 'API', auth: 'OAuth service account', test: 'n/a', crit: 'low', mcp: 'mcp-seo' },
+  { name: 'Matomo analytics', type: 'self-hosted', access: 'API', auth: 'token', test: 'n/a', crit: 'low', mcp: 'mcp-seo' },
+  { name: 'Jira ticketing', type: 'SaaS', access: 'API + webhooks', auth: 'OAuth', test: 'sandbox', crit: 'medium', mcp: 'mcp-ticketing' },
+  { name: 'Slack', type: 'SaaS', access: 'API + events', auth: 'bot token', test: 'test workspace', crit: 'low', mcp: 'mcp-slack' },
+  { name: 'File share (SMB)', type: 'on-prem', access: 'read-only mount', auth: 'service account', test: 'n/a', crit: 'low', mcp: 'kb-pipeline' },
+  { name: 'Uptime monitor', type: 'SaaS', access: 'API', auth: 'token', test: 'n/a', crit: 'low', mcp: 'mcp-seo' },
+];
+const SOURCES = [
+  { id: 'sp-finance', name: 'SharePoint › Finance', kind: 'SharePoint', docs: 3, lastSync: dayStr(0) + ' 02:10', status: 'ok', acl: 'finance, management' },
+  { id: 'conf-it', name: 'Confluence › IT operations', kind: 'Confluence', docs: 2, lastSync: dayStr(0) + ' 02:12', status: 'ok', acl: 'it, management' },
+  { id: 'drive-mkt', name: 'Drive › Marketing', kind: 'Google Drive', docs: 2, lastSync: dayStr(-1) + ' 02:08', status: 'warn', acl: 'marketing, all-staff' },
+  { id: 'smb-hr', name: 'File share › HR', kind: 'SMB', docs: 1, lastSync: dayStr(0) + ' 02:15', status: 'ok', acl: 'hr, management' },
+  { id: 'manual', name: 'Manual uploads (console)', kind: 'Upload', docs: 0, lastSync: '–', status: 'ok', acl: 'as set per document' },
+];
+const DOCS = [
+  { id: 'finance-handbook', title: 'Finance Handbook', type: 'policy', dept: 'finance', source: 'sp-finance', updated: dayStr(-120), owner: 'finance_lead', acl: ['finance', 'management'], reviewEvery: 180,
+    chunks: [
+      { heading: 'Invoicing › Payment terms', text: 'Customer invoices are issued with 14 days net payment terms. An invoice is overdue on day 15. Payment reminders are sent in three levels: level 1 at 7 days overdue, level 2 at 21 days overdue and level 3 at 35 days overdue. Level 3 reminders announce hand-over to collection and must be approved by the finance lead before sending.' },
+      { heading: 'Invoicing › Reminder wording and channel', text: 'Level 1 and 2 reminders are sent by email from the ERP reminder module using the standard template. Flagged customers (key accounts and customers in dispute) never receive automatic reminders; the account manager is informed instead. Reminders are limited to one per customer per week.' },
+      { heading: 'Month-end close checklist', text: 'The accounting period must be closed in the ERP by the 5th business day of the following month. Before closing: all supplier invoices booked, bank statements reconciled, accruals posted, VAT ledger exported for the ÁFA return. The finance lead confirms the close in the #finance channel.' },
+    ] },
+  { id: 'vat-return-procedure', title: 'VAT return procedure (ÁFA bevallás)', type: 'sop', dept: 'finance', source: 'sp-finance', updated: dayStr(-40), owner: 'finance_lead', acl: ['finance', 'management'], reviewEvery: 365,
+    chunks: [
+      { heading: 'Deadline and ownership', text: 'The monthly VAT return (ÁFA bevallás, form 2665) is due to NAV, the Hungarian tax authority, by the 20th of the following month. The finance lead owns the filing; the CFO is the backup. Payment of the VAT liability is due on the same day.' },
+      { heading: 'Steps', text: '1. Export the VAT ledger from the ERP accounting module for the closed period. 2. Reconcile the ledger totals with the general ledger VAT accounts. 3. Prepare the return in the NAV ÁNYK or ONYA system. 4. Have the CFO review returns above 5 million HUF. 5. Submit and download the confirmation. 6. Archive the confirmation in SharePoint under Finance/VAT/<year>/<month>.' },
+      { heading: 'Common problems', text: 'If the accounting period is still open in the ERP, the export is incomplete. Close the period first (see Month-end close checklist). Late filing results in a default penalty from NAV, so file an estimated return and correct it later rather than missing the date.' },
+    ] },
+  { id: 'cms-release-process', title: 'CMS release process', type: 'sop', dept: 'it', source: 'conf-it', updated: dayStr(-15), owner: 'it_lead', acl: ['it', 'marketing', 'management'], reviewEvery: 180,
+    chunks: [
+      { heading: 'Release windows', text: 'Website CMS deployments happen on Tuesdays and Thursdays between 9:00 and 11:00. Every release is first deployed to staging and checked by the requesting team. Emergency fixes outside the window need approval from the IT lead.' },
+      { heading: 'Pre-publish SEO checklist', text: 'Before publishing changes to key pages (home, pricing, product pages, top blog posts) the release owner runs the SEO checklist: title 50 to 60 characters, meta description present, canonical points to the page itself, robots meta is index,follow, structured data validates, and the page is in the sitemap. A noindex tag on a key page is a release blocker.' },
+      { heading: 'Page ownership', text: 'The pricing page and product pages are owned by Product marketing (SEO owner: Kata Nagy). The blog is owned by Content marketing. The home page is owned by the marketing lead. Owners approve content changes and are notified of any deployment touching their pages.' },
+    ] },
+  { id: 'seo-guidelines', title: 'SEO guidelines for key pages', type: 'guideline', dept: 'marketing', source: 'drive-mkt', updated: dayStr(-200), owner: 'seo_owner', acl: ['marketing', 'all-staff'], reviewEvery: 180,
+    chunks: [
+      { heading: 'Key pages and monitoring', text: 'Key pages (KP) are the home page, /pricing, the product pages and the top five blog posts by organic traffic. Search Console clicks, impressions and average position are reviewed weekly for key pages. A drop of more than 30 percent against the usual level for a key page is investigated within one business day.' },
+      { heading: 'Triage order for a traffic drop', text: 'When organic traffic drops on a key page, check in this order: 1. is the page reachable and returning 200; 2. did the robots meta, canonical or title change (compare with the last crawl); 3. was there a CMS deployment in the two days before the drop; 4. did impressions drop as well (ranking or indexing issue) or only clicks (snippet or CTR issue); 5. is the drop site-wide, which points to an algorithm update or seasonality.' },
+    ] },
+  { id: 'certificate-management', title: 'TLS certificate management', type: 'sop', dept: 'it', source: 'conf-it', updated: dayStr(-60), owner: 'it_lead', acl: ['it', 'management'], reviewEvery: 365,
+    chunks: [
+      { heading: 'Renewal rule', text: 'The wildcard TLS certificate for the company domain is renewed 14 days before expiry, never later than 3 days before. Expiry dates are tracked in the IT asset register. The IT lead owns renewal; the IT admin is the backup. After installing the new certificate, verify with an external SSL checker and record the new expiry date in the register.' },
+      { heading: 'Provider and steps', text: 'Certificates are purchased from the current provider through the IT procurement account. Steps: generate CSR on the load balancer, order and validate by DNS record, install on the load balancer and the mail gateway, restart services in the maintenance window, verify, update the register.' },
+    ] },
+  { id: 'supplier-contract-policy', title: 'Supplier contract renewal policy', type: 'policy', dept: 'procurement', source: 'sp-finance', updated: dayStr(-300), owner: 'procurement_lead', acl: ['finance', 'procurement', 'management'], reviewEvery: 365,
+    chunks: [
+      { heading: 'Notice periods', text: 'Most supplier contracts renew automatically for 12 months unless written notice is given 60 days before the renewal date. Contracts above 10 million HUF per year are reviewed 90 days before renewal by procurement and the CFO. The contract register in SharePoint holds the renewal date and the notice period of every contract.' },
+    ] },
+  { id: 'erp-user-guide-orders', title: 'ERP user guide – Orders module', type: 'manual', dept: 'sales', source: 'sp-finance', updated: dayStr(-90), owner: 'sales_ops', acl: ['all-staff'], reviewEvery: 365,
+    chunks: [
+      { heading: 'Order statuses', text: 'A sales order (SO) moves through the statuses new, awaiting_payment, paid, in_fulfilment, shipped, closed. Orders are created from the web shop or manually by sales. The status awaiting_payment is set when the pro forma invoice is sent.' },
+      { heading: 'Stuck orders', text: 'An order that stays in awaiting_payment for more than 7 days is escalated to sales operations, who contact the customer. After 21 days without payment the order is cancelled and stock is released. Sales operations review the stuck-order list every Monday.' },
+    ] },
+  { id: 'onboarding-checklist', title: 'New employee onboarding checklist', type: 'checklist', dept: 'hr', source: 'smb-hr', updated: dayStr(-30), owner: 'hr_lead', acl: ['hr', 'management'], reviewEvery: 365,
+    chunks: [
+      { heading: 'First week', text: 'Before day one HR creates the user account, orders the laptop and schedules the security training. In the first week the new employee completes the mandatory data protection training, meets their buddy, and gets access to the ERP and the ticketing system according to their role. Probation ends after 3 months and the manager files the probation review 2 weeks before.' },
+    ] },
+];
+const GLOSSARY = [
+  { term: 'NAV', meaning: 'Nemzeti Adó- és Vámhivatal, the Hungarian tax authority', synonyms: ['tax authority', 'tax office'] },
+  { term: 'ÁFA', meaning: 'Általános forgalmi adó, value added tax', synonyms: ['VAT', 'sales tax'] },
+  { term: 'KP', meaning: 'Key pages: the website pages monitored for SEO', synonyms: ['key page', 'key pages'] },
+  { term: 'SO', meaning: 'Sales order in the ERP Orders module', synonyms: ['sales order', 'order'] },
+  { term: 'SC', meaning: 'Google Search Console', synonyms: ['search console', 'GSC'] },
+  { term: 'CWV', meaning: 'Core Web Vitals (LCP, INP, CLS)', synonyms: ['core web vitals', 'page speed'] },
+];
+const GOLDEN = [
+  { q: 'How many days before expiry do we renew the TLS certificate?', doc: 'certificate-management' },
+  { q: 'When is the VAT return due?', doc: 'vat-return-procedure' },
+  { q: 'What are the payment reminder levels?', doc: 'finance-handbook' },
+  { q: 'Who owns the pricing page?', doc: 'cms-release-process' },
+  { q: 'What notice period do supplier contracts need?', doc: 'supplier-contract-policy' },
+  { q: 'What happens to an order awaiting payment for more than a week?', doc: 'erp-user-guide-orders' },
+  { q: 'When does probation end for a new employee?', doc: 'onboarding-checklist' },
+  { q: 'What is checked before publishing a key page?', doc: 'cms-release-process' },
+];
+
+const RULES = [
+  { id: 'seo-organic-drop', type: 'threshold', status: 'active', owner: 'marketing', owner_role: 'seo_owner', severity: 'high', review_date: '2027-04-01',
+    description: 'Organic clicks on a key landing page fell well below their usual level.',
+    signal: 'search_console.clicks', scope_pages: [...KEY_PAGES], baseline: { method: 'same_weekday_median', window_days: 28 },
+    condition: { ratio_lt: 0.70, consecutive: 2, min_baseline: 20 }, cooldown_days: 3, playbook: 'seo-drop-triage',
+    allowed_actions: ['slack.post_message', 'ticketing.create_issue', 'cms.remove_noindex', 'cms.set_page_meta'],
+    escalation: [{ after: '24h', notify_role: 'marketing_lead' }, { after: '72h', notify_role: 'head_of_digital' }], stats: { fired30: 3, acked: 2, dismissed: 1 } },
+  { id: 'seo-impressions-drop', type: 'threshold', status: 'shadow', owner: 'marketing', owner_role: 'seo_owner', severity: 'medium', review_date: '2027-04-01',
+    description: 'Impressions on a key page fell: ranking or indexing problem.', signal: 'search_console.impressions', scope_pages: [...KEY_PAGES],
+    baseline: { method: 'same_weekday_median', window_days: 28 }, condition: { ratio_lt: 0.75, consecutive: 2, min_baseline: 500 }, cooldown_days: 3, playbook: 'seo-drop-triage',
+    allowed_actions: ['slack.post_message', 'ticketing.create_issue'], escalation: [{ after: '48h', notify_role: 'marketing_lead' }], stats: { fired30: 5, acked: 0, dismissed: 0 } },
+  { id: 'vat-return', type: 'time', status: 'active', owner: 'finance', owner_role: 'finance_lead', severity: 'high', review_date: '2027-01-15',
+    description: 'Monthly VAT return must be filed with NAV by the 20th.', due: { day_of_month: 20 }, lead_times_days: [10, 3, 1], requires_ack: true, playbook: 'vat-return-checklist',
+    context_tools: ['erp.get_period_status', 'kb.search'], escalation: [{ after: '48h', notify_role: 'cfo' }], stats: { fired30: 3, acked: 3, dismissed: 0 } },
+  { id: 'ssl-cert-expiry', type: 'time', status: 'active', owner: 'it', owner_role: 'it_lead', severity: 'high', review_date: '2027-03-01',
+    description: 'Wildcard TLS certificate expiry.', due: { date: dayStr(9) }, lead_times_days: [14, 3], requires_ack: true, playbook: null,
+    context_tools: ['tls.expiry', 'kb.search'], escalation: [{ after: '24h', notify_role: 'cfo' }], stats: { fired30: 1, acked: 0, dismissed: 0 } },
+  { id: 'supplier-contract-cloudhost', type: 'time', status: 'active', owner: 'procurement', owner_role: 'procurement_lead', severity: 'medium', review_date: '2027-06-01',
+    description: 'Hosting provider contract renews automatically; notice must be given 60 days before.', due: { date: dayStr(45) }, lead_times_days: [90, 60, 30], requires_ack: true, playbook: null,
+    context_tools: ['kb.search'], escalation: [{ after: '72h', notify_role: 'cfo' }], stats: { fired30: 1, acked: 1, dismissed: 0 } },
+  { id: 'doc-review-seo-guidelines', type: 'time', status: 'active', owner: 'marketing', owner_role: 'seo_owner', severity: 'low', review_date: '2027-06-01',
+    description: 'Knowledge base document "SEO guidelines for key pages" passed its review date.', due: { date: dayStr(-20) }, lead_times_days: [14], requires_ack: true, playbook: null,
+    context_tools: ['kb.get_document'], escalation: [], stats: { fired30: 1, acked: 0, dismissed: 0 } },
+  { id: 'order-stuck-awaiting-payment', type: 'state', status: 'active', owner: 'sales', owner_role: 'sales_ops', severity: 'medium', review_date: '2027-02-01',
+    description: 'Sales order waiting for payment for more than 7 days.', entity: 'orders', where: { status: 'awaiting_payment' }, condition: { days_in_status_gt: 7 },
+    schedule: 'every 15 min (poller)', playbook: 'stuck-order-follow-up', allowed_actions: ['email.send', 'crm.add_note'], escalation: [{ after: '14d', notify_role: 'sales_lead' }], stats: { fired30: 9, acked: 8, dismissed: 1 } },
+  { id: 'ticket-first-response-sla', type: 'state', status: 'draft', owner: 'support', owner_role: 'support_lead', severity: 'medium', review_date: '2027-02-01',
+    description: 'Open ticket without a first response for more than 4 hours.', entity: 'tickets', where: { status: 'open', first_response: false }, condition: { hours_open_gt: 4 },
+    schedule: 'webhook + 15 min poller', playbook: null, allowed_actions: ['slack.post_message'], escalation: [], stats: { fired30: 0, acked: 0, dismissed: 0 } },
+  { id: 'policy-payment-reminders', type: 'policy', status: 'active', owner: 'finance', tool: 'erp.create_payment_reminder', dry_run_first: true, rate_limit: '200 per day, 1 per customer per week',
+    description: 'Who may send payment reminders automatically.',
+    decisions: [{ when: 'amount < 500 and level <= 2 and customer not flagged', allow: 'auto' }, { when: 'level == 3 or customer flagged', allow: 'approve', approver_role: 'finance_lead' }, { when: 'level > 3', allow: 'forbid' }, { when: 'otherwise', allow: 'approve', approver_role: 'finance_lead' }], stats: { fired30: 41, acked: 0, dismissed: 0 } },
+  { id: 'policy-cms-writes', type: 'policy', status: 'active', owner: 'marketing', tool: 'cms.*', dry_run_first: true, rate_limit: '20 per day',
+    description: 'Changes to live pages through the CMS.',
+    decisions: [{ when: 'dry_run', allow: 'auto' }, { when: 'path in key_pages', allow: 'approve', approver_role: 'seo_owner' }, { when: 'otherwise', allow: 'auto' }], stats: { fired30: 4, acked: 0, dismissed: 0 } },
+  { id: 'policy-communication', type: 'policy', status: 'active', owner: 'it', tool: 'slack.post_message', dry_run_first: false, rate_limit: '60 per hour',
+    description: 'Where the assistant may post on its own.',
+    decisions: [{ when: 'channel is the task owner channel or a DM to the owner', allow: 'auto' }, { when: 'channel == #general', allow: 'approve', approver_role: 'marketing_lead' }, { when: 'otherwise', allow: 'auto' }], stats: { fired30: 88, acked: 0, dismissed: 0 } },
+];
+
+const TRIGGERS = {
+  schedules: [
+    { id: 'daily-seo-collect', name: 'Daily SEO collection', cron: '0 7 * * *', human: 'every day 07:00', runs: ['seo.get_search_console_series', 'analytics.get_sessions'], rules: ['seo-organic-drop', 'seo-impressions-drop'], lastRun: dayStr(0) + ' 07:00', next: dayStr(1) + ' 07:00', status: 'ok' },
+    { id: 'daily-page-diff', name: 'Key page crawl and diff', cron: '30 7 * * *', human: 'every day 07:30', runs: ['crawler.diff_page'], rules: [], lastRun: dayStr(0) + ' 07:30', next: dayStr(1) + ' 07:30', status: 'ok' },
+    { id: 'deadline-sweep', name: 'Deadline sweep', cron: '0 8 * * 1-5', human: 'weekdays 08:00', runs: [], rules: ['vat-return', 'ssl-cert-expiry', 'supplier-contract-cloudhost', 'doc-review-seo-guidelines'], lastRun: dayStr(0) + ' 08:00', next: dayStr(1) + ' 08:00', status: 'ok' },
+    { id: 'kb-reconcile', name: 'Knowledge base reconciliation', cron: '0 2 * * *', human: 'every day 02:00', runs: ['kb-pipeline.sync_all'], rules: [], lastRun: dayStr(0) + ' 02:00', next: dayStr(1) + ' 02:00', status: 'warn' },
+    { id: 'weekly-lessons', name: 'Weekly lessons review draft', cron: '0 9 * * 5', human: 'Fridays 09:00', runs: ['memory.cluster_episodes'], rules: [], lastRun: dayStr(-((today.getDay() + 2) % 7)) + ' 09:00', next: dayStr(((5 - today.getDay()) + 7) % 7 || 7) + ' 09:00', status: 'ok' },
+  ],
+  webhooks: [
+    { id: 'cms-deployment', event: 'cms.deployment', path: '/hooks/cms/deployment', source: 'CMS', last: dayStr(-2) + ' 10:14', count30: 9, handles: 'records deployment, runs page diff on touched pages' },
+    { id: 'jira-issue-created', event: 'ticketing.issue_created', path: '/hooks/jira/issue', source: 'Jira', last: dayStr(0) + ' 09:41', count30: 132, handles: 'starts SLA timer (ticket-first-response-sla)' },
+    { id: 'erp-invoice-posted', event: 'erp.invoice_posted', path: '/hooks/erp/invoice', source: 'ERP', last: dayStr(0) + ' 11:02', count30: 410, handles: 'schedules reminder checks' },
+  ],
+  pollers: [
+    { id: 'erp-orders', name: 'ERP orders by status', tool: 'orders.list_by_status', every: '15 min', last: nowStr(), rules: ['order-stuck-awaiting-payment'], status: 'ok' },
+    { id: 'uptime', name: 'Website uptime', tool: 'uptime.status', every: '1 min', last: nowStr(), rules: [], status: 'ok' },
+    { id: 'tls', name: 'TLS expiry', tool: 'tls.expiry', every: '24 h', last: dayStr(0) + ' 06:00', rules: ['ssl-cert-expiry'], status: 'ok' },
+  ],
+};
+
+const TOOLS = [
+  { name: 'kb.search', server: 'kb', cls: 'knowledge', risk: 'low', desc: 'Hybrid search over the document index. Returns the best matching chunks with citations, filtered by the caller\'s permissions.', params: [{ n: 'query', t: 'text', req: true, d: 'How many days before expiry do we renew the certificate?' }, { n: 'department', t: 'select', opts: ['', 'finance', 'it', 'marketing', 'sales', 'hr', 'procurement'] }], health: 'ok', last: '2 min ago' },
+  { name: 'metrics.query', server: 'metrics', cls: 'knowledge', risk: 'low', desc: 'Time series of a signal with its baseline for one dimension value.', params: [{ n: 'signal', t: 'select', opts: ['search_console.clicks', 'search_console.impressions'], req: true }, { n: 'page', t: 'select', opts: ALL_PAGES, req: true }, { n: 'days', t: 'number', d: 14 }], health: 'ok', last: '1 min ago' },
+  { name: 'entities.sql', server: 'entities', cls: 'knowledge', risk: 'low', desc: 'Read-only SQL over the entity tables (deadlines, people, systems, processes). Allow-listed tables, 200-row limit.', params: [{ n: 'query', t: 'text', req: true, d: 'select role, name, channel from people where team like \'%Finance%\'' }], health: 'ok', last: '18 min ago' },
+  { name: 'seo.get_search_console_series', server: 'mcp-seo', cls: 'read', risk: 'low', desc: 'Daily clicks, impressions, CTR and position per page from Google Search Console. 2-day lag.', params: [{ n: 'page', t: 'select', opts: ALL_PAGES, req: true }, { n: 'days', t: 'number', d: 7 }], health: 'ok', last: 'today 07:00' },
+  { name: 'analytics.get_sessions', server: 'mcp-seo', cls: 'read', risk: 'low', desc: 'Sessions per landing page from Matomo.', params: [{ n: 'page', t: 'select', opts: ALL_PAGES, req: true }, { n: 'days', t: 'number', d: 7 }], health: 'ok', last: 'today 07:00' },
+  { name: 'crawler.fetch_page', server: 'mcp-seo', cls: 'read', risk: 'low', desc: 'Fetches a page and returns status, title, canonical, robots meta and H1.', params: [{ n: 'url', t: 'select', opts: ALL_PAGES, req: true }], health: 'ok', last: 'today 07:30' },
+  { name: 'crawler.diff_page', server: 'mcp-seo', cls: 'read', risk: 'low', desc: 'Compares the current crawl of a page with the crawl from a given number of days ago and lists SEO-relevant changes.', params: [{ n: 'url', t: 'select', opts: ALL_PAGES, req: true }, { n: 'since_days', t: 'number', d: 7 }], health: 'ok', last: 'today 07:30' },
+  { name: 'uptime.status', server: 'mcp-seo', cls: 'read', risk: 'low', desc: 'Availability and error rate of the website over the last days.', params: [{ n: 'days', t: 'number', d: 7 }], health: 'ok', last: '1 min ago' },
+  { name: 'deploy.list_recent', server: 'mcp-cms', cls: 'read', risk: 'low', desc: 'Recent deployments of a system with author and note.', params: [{ n: 'system', t: 'select', opts: ['cms', 'erp', 'webshop'], req: true }, { n: 'days', t: 'number', d: 7 }], health: 'ok', last: 'today 07:30' },
+  { name: 'cms.remove_noindex', server: 'mcp-cms', cls: 'write', risk: 'medium', desc: 'Removes a robots noindex meta tag from a page. Dry run returns the planned change.', params: [{ n: 'path', t: 'select', opts: ALL_PAGES, req: true }, { n: 'dry_run', t: 'bool', d: true }], health: 'ok', last: '6 days ago' },
+  { name: 'cms.set_page_meta', server: 'mcp-cms', cls: 'write', risk: 'medium', desc: 'Sets title and meta description of a page.', params: [{ n: 'path', t: 'select', opts: ALL_PAGES, req: true }, { n: 'title', t: 'text', d: 'Pricing – plans for every team size' }, { n: 'dry_run', t: 'bool', d: true }], health: 'ok', last: '12 days ago' },
+  { name: 'erp.get_period_status', server: 'mcp-erp', cls: 'read', risk: 'low', desc: 'Whether an accounting period is open or closed in the ERP.', params: [{ n: 'period', t: 'text', d: TODAY.slice(0, 7) }], health: 'ok', last: 'today 08:00' },
+  { name: 'erp.list_overdue_invoices', server: 'mcp-erp', cls: 'read', risk: 'low', desc: 'Open customer invoices overdue by at least N days.', params: [{ n: 'min_days', t: 'number', d: 7 }], health: 'ok', last: 'today 08:05' },
+  { name: 'erp.create_payment_reminder', server: 'mcp-erp', cls: 'write', risk: 'high', desc: 'Creates and sends a payment reminder for an invoice. Policy: auto below 500 EUR up to level 2, otherwise approval.', params: [{ n: 'invoice_id', t: 'text', d: 'INV-2026-0912', req: true }, { n: 'amount', t: 'number', d: 320 }, { n: 'level', t: 'number', d: 1 }, { n: 'customer_flagged', t: 'bool', d: false }, { n: 'dry_run', t: 'bool', d: true }], health: 'ok', last: 'today 08:05' },
+  { name: 'orders.list_by_status', server: 'mcp-erp', cls: 'read', risk: 'low', desc: 'Sales orders in a status with days in status.', params: [{ n: 'status', t: 'select', opts: ['awaiting_payment', 'new', 'paid', 'in_fulfilment'], req: true }], health: 'ok', last: '3 min ago' },
+  { name: 'slack.post_message', server: 'mcp-slack', cls: 'communicate', risk: 'low', desc: 'Posts a message to a channel or a person.', params: [{ n: 'channel', t: 'select', opts: ['#marketing', '#finance', '#it-ops', '#sales-ops', '#general'], req: true }, { n: 'text', t: 'text', d: 'Test message from the console', req: true }], health: 'ok', last: '9 min ago' },
+  { name: 'ticketing.create_issue', server: 'mcp-ticketing', cls: 'write', risk: 'low', desc: 'Creates a Jira issue.', params: [{ n: 'project', t: 'select', opts: ['WEB', 'FIN', 'ITOPS'], req: true }, { n: 'summary', t: 'text', d: 'Investigate organic drop on /pricing', req: true }], health: 'warn', last: '2 h ago (1 timeout)' },
+  { name: 'tls.expiry', server: 'mcp-seo', cls: 'read', risk: 'low', desc: 'Expiry date of the certificate served by a host.', params: [{ n: 'host', t: 'text', d: 'www.example.com' }], health: 'ok', last: 'today 06:00' },
+];
+
+const PLAYBOOKS = [
+  { id: 'seo-drop-triage', title: 'SEO drop triage', owner: 'marketing', autonomy: 2, triggeredBy: ['seo-organic-drop', 'seo-impressions-drop'],
+    done: 'Alert sent to the owner with a ranked cause list, and either a fix is approved or a ticket exists.',
+    steps: ['Rule out measurement problems: is Search Console data complete, does analytics show the same drop?', 'Rule out availability: uptime for 7 days, page returns 200, canonical points to itself.', 'Check on-page changes with the crawl diff: title, meta, robots, canonical, H1, structured data.', 'Correlate with CMS deployments in the 2 days before the drop.', 'Compare impressions and clicks: both down means ranking or indexing; only clicks down means snippet or CTR.', 'Check whether the drop is site-wide (algorithm update or seasonality).', 'Compose the alert with numbers, ranked causes, evidence and recommended action.', 'Propose the fix: noindex or canonical regression → CMS tool with dry run → approval card; otherwise create a ticket.', 'Record the episode: cause category, evidence, action, time to detect.'] },
+  { id: 'vat-return-checklist', title: 'VAT return checklist', owner: 'finance', autonomy: 1, triggeredBy: ['vat-return'],
+    done: 'Owner acknowledged the reminder; the confirmation is archived or the return is marked filed in the ERP.',
+    steps: ['Check whether the accounting period is closed in the ERP; if not, remind about the month-end close first.', 'Attach the VAT return procedure from the knowledge base.', 'List open blockers: unbooked supplier invoices, unreconciled bank statements.', 'Send the reminder to the finance lead with the checklist and the due date.', 'If not acknowledged in 48 hours, notify the CFO.'] },
+  { id: 'stuck-order-follow-up', title: 'Stuck order follow-up', owner: 'sales', autonomy: 2, triggeredBy: ['order-stuck-awaiting-payment'],
+    done: 'Customer contacted and a note added to the order, or the order cancelled after 21 days.',
+    steps: ['Pull the order, customer contact and pro forma invoice.', 'Check whether a payment arrived but was not matched.', 'Draft the follow-up email from the template; sales operations approve and send.', 'Add a note to the order with the contact date.', 'After 21 days propose cancellation and stock release.'] },
+];
+
+const INIT_ORDERS = [
+  { id: 'SO-10231', customer: 'Horváth Kft.', status: 'awaiting_payment', days: 12, amount: 1840 },
+  { id: 'SO-10244', customer: 'Blue Office Zrt.', status: 'awaiting_payment', days: 9, amount: 620 },
+  { id: 'SO-10251', customer: 'Nordlicht GmbH', status: 'awaiting_payment', days: 3, amount: 4100 },
+  { id: 'SO-10255', customer: 'Kovács Bt.', status: 'awaiting_payment', days: 1, amount: 240 },
+  { id: 'SO-10238', customer: 'Alpha Retail', status: 'in_fulfilment', days: 2, amount: 980 },
+];
+const INIT_INVOICES = [
+  { id: 'INV-2026-0912', customer: 'Horváth Kft.', amount: 2450, overdue: 36, level: 2, flagged: false },
+  { id: 'INV-2026-0931', customer: 'Blue Office Zrt.', amount: 320, overdue: 9, level: 0, flagged: false },
+  { id: 'INV-2026-0940', customer: 'Nordlicht GmbH', amount: 7800, overdue: 22, level: 1, flagged: true },
+  { id: 'INV-2026-0948', customer: 'Kovács Bt.', amount: 140, overdue: 8, level: 0, flagged: false },
+];
+
+function initialState() {
+  return {
+    ui: { view: 'overview', kbTab: 'documents', ruleId: 'seo-organic-drop', ruleFilter: 'all', toolName: 'kb.search', playbookId: 'seo-drop-triage', docId: null, labTab: 'scenario', trigTab: 'schedules' },
+    docs: JSON.parse(JSON.stringify(DOCS)),
+    sources: JSON.parse(JSON.stringify(SOURCES)),
+    glossary: JSON.parse(JSON.stringify(GLOSSARY)),
+    rules: JSON.parse(JSON.stringify(RULES)),
+    triggers: JSON.parse(JSON.stringify(TRIGGERS)),
+    metrics: genMetrics(),
+    orders: JSON.parse(JSON.stringify(INIT_ORDERS)),
+    invoices: JSON.parse(JSON.stringify(INIT_INVOICES)),
+    deploys: [{ system: 'cms', at: dayStr(-2) + ' 10:14', by: 'm.varga', note: 'Blog template: new author box' }, { system: 'erp', at: dayStr(-5) + ' 18:30', by: 'ci-bot', note: 'Orders module 4.12.1' }],
+    tasks: [
+      { id: 'task-ssl', ruleId: 'ssl-cert-expiry', type: 'time', severity: 'high', title: 'TLS certificate expires in 9 days', owner: 'it_lead', status: 'open', createdAt: dayStr(0) + ' 08:00', evidence: 'Expiry ' + dayStr(9) + '; renewal rule is 14 days before expiry, so the renewal is already late by 5 days.' },
+      { id: 'task-docrev', ruleId: 'doc-review-seo-guidelines', type: 'time', severity: 'low', title: 'Document review overdue: SEO guidelines for key pages', owner: 'seo_owner', status: 'open', createdAt: dayStr(-20) + ' 08:00', evidence: 'Last updated 200 days ago; review cycle 180 days.' },
+      { id: 'task-so1', ruleId: 'order-stuck-awaiting-payment', type: 'state', severity: 'medium', title: 'Order SO-10231 awaiting payment for 12 days', owner: 'sales_ops', status: 'acked', createdAt: dayStr(-4) + ' 09:15', evidence: 'Horváth Kft., 1 840 EUR, pro forma sent ' + dayStr(-12) + '.' },
+    ],
+    approvals: [
+      { id: 'apr-1', tool: 'erp.create_payment_reminder', args: { invoice_id: 'INV-2026-0912', amount: 2450, level: 3, customer_flagged: false }, dryRun: 'Would send level 3 reminder (collection notice) to Horváth Kft. for INV-2026-0912, 2 450 EUR, 36 days overdue.', requestedBy: 'Task executor · month-end reminder run', approver: 'finance_lead', rule: 'policy-payment-reminders', status: 'pending', at: dayStr(0) + ' 08:06', taskId: null },
+    ],
+    events: [
+      { at: dayStr(0) + ' 11:02', kind: 'webhook', what: 'erp.invoice_posted', detail: 'INV-2026-0961 posted, reminder check scheduled' },
+      { at: dayStr(0) + ' 09:41', kind: 'webhook', what: 'ticketing.issue_created', detail: 'WEB-418 created; SLA timer started (rule in draft, no alert)' },
+      { at: dayStr(0) + ' 08:06', kind: 'approval', what: 'erp.create_payment_reminder', detail: 'Level 3 reminder for INV-2026-0912 waits for finance_lead' },
+      { at: dayStr(0) + ' 08:00', kind: 'rule', what: 'ssl-cert-expiry fired', detail: 'Certificate expires in 9 days; task created for it_lead' },
+      { at: dayStr(0) + ' 07:30', kind: 'schedule', what: 'daily-page-diff ran', detail: '4 key pages crawled, no SEO-relevant changes' },
+      { at: dayStr(0) + ' 07:00', kind: 'schedule', what: 'daily-seo-collect ran', detail: '5 pages collected; seo-organic-drop: no firing; seo-impressions-drop (shadow): no firing' },
+      { at: dayStr(0) + ' 02:00', kind: 'schedule', what: 'kb-reconcile ran', detail: 'Drive › Marketing sync skipped: token expires in 3 days' },
+    ],
+    audit: [
+      { at: dayStr(0) + ' 08:06', actor: 'agent:task-executor', kind: 'tool.dry_run', detail: 'erp.create_payment_reminder INV-2026-0912 level 3 → approval requested (policy-payment-reminders)' },
+      { at: dayStr(0) + ' 08:05', actor: 'agent:task-executor', kind: 'tool.call', detail: 'erp.create_payment_reminder INV-2026-0948 level 1, 140 EUR → auto, sent' },
+      { at: dayStr(0) + ' 08:00', actor: 'rule-engine', kind: 'rule.fired', detail: 'ssl-cert-expiry v1 → task-ssl (severity high, owner it_lead)' },
+      { at: dayStr(-1) + ' 16:20', actor: 'anna.kovacs', kind: 'approval.approved', detail: 'erp.create_payment_reminder INV-2026-0877 level 3' },
+      { at: dayStr(-2) + ' 10:14', actor: 'webhook:cms', kind: 'event', detail: 'cms.deployment by m.varga: Blog template' },
+    ],
+    gaps: [
+      { q: 'What is the mileage reimbursement rate for 2026?', asked: 3, by: 'finance', at: dayStr(-1) },
+      { q: 'How do I request a new Jira project?', asked: 2, by: 'it', at: dayStr(-3) },
+    ],
+    scenario: { page: '/pricing', drop: 45, days: 3, cause: 'noindex', applied: false },
+    chat: [{ who: 'assistant', html: 'Ask me anything the company documents cover, or ask about deadlines and owners. Try the suggestions below.' }],
+    kbQuery: '', kbResults: null, lastEval: null, evalRun: null, toolResult: null, lastRuleSim: null, addResult: null,
+  };
+}
+
+let state = initialState();
+const LS_KEY = 'assistant-control-room-v1';
+function save() { try { const { kbResults, toolResult, lastRuleSim, ...rest } = state; localStorage.setItem(LS_KEY, JSON.stringify(rest)); } catch (e) { /* storage unavailable */ } }
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY); if (!raw) return;
+    const s = JSON.parse(raw); if (!s || !s.rules || !s.docs) return;
+    state = { ...initialState(), ...s, ui: { ...initialState().ui, ...(s.ui || {}) } };
+  } catch (e) { /* ignore */ }
+}
+
+// ---------- knowledge engine
+const STOP = new Set(['the', 'and', 'for', 'are', 'what', 'when', 'how', 'who', 'does', 'with', 'that', 'this', 'from', 'our', 'can', 'you', 'all', 'any', 'before', 'after', 'than', 'more', 'have', 'has', 'was', 'were', 'which', 'into', 'about', 'need', 'needs']);
+function tokens(s) { return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter(t => t.length > 2 && !STOP.has(t)).map(t => t.replace(/(ies)$/, 'y').replace(/(ing|ed|es|s)$/, '')); }
+function expandQuery(q) {
+  let out = [...tokens(q)];
+  const lq = q.toLowerCase();
+  for (const g of state.glossary) {
+    const all = [g.term, ...g.synonyms].map(x => x.toLowerCase());
+    if (all.some(a => lq.includes(a))) out.push(...tokens([g.term, ...g.synonyms].join(' ')));
+  }
+  return [...new Set(out)];
+}
+function kbSearch(query, opts = {}) {
+  const terms = expandQuery(query); if (!terms.length) return [];
+  const hits = [];
+  for (const d of state.docs) {
+    if (opts.department && d.dept !== opts.department) continue;
+    const titleT = tokens(d.title);
+    d.chunks.forEach((c, ci) => {
+      const headT = tokens(c.heading), bodyT = tokens(c.text);
+      let score = 0, matched = [];
+      for (const t of terms) {
+        const nb = bodyT.filter(x => x === t || x.startsWith(t) && t.length >= 4).length;
+        const nh = headT.filter(x => x === t).length, nt = titleT.filter(x => x === t).length;
+        const s = nb * 1 + nh * 2.5 + nt * 2;
+        if (s) { score += s; matched.push(t); }
+      }
+      if (score > 0) { score = score * (matched.length / terms.length) / Math.log2(10 + bodyT.length / 40); hits.push({ doc: d, chunk: c, ci, score, matched, coverage: matched.length / terms.length }); }
+    });
+  }
+  hits.sort((a, b) => b.score - a.score);
+  return hits.slice(0, opts.limit || 5);
+}
+function highlight(text, terms) {
+  let out = esc(text);
+  for (const t of terms) { if (t.length < 3) continue; out = out.replace(new RegExp('(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[a-z]*)', 'gi'), '<mark>$1</mark>'); }
+  return out;
+}
+function composeAnswer(hits) {
+  if (!hits.length) return null;
+  const top = hits[0];
+  const sentences = top.chunk.text.match(/[^.!?]+[.!?]+/g) || [top.chunk.text];
+  const scored = sentences.map(s => ({ s, n: tokens(s).filter(t => top.matched.includes(t)).length })).sort((a, b) => b.n - a.n);
+  const pick = scored.slice(0, 2).map(x => x.s.trim());
+  return { text: pick.join(' '), source: top, confidence: Math.min(0.98, 0.35 + 0.35 * top.coverage + Math.min(0.3, top.score / 10)) };
+}
+function chunkText(text) {
+  const paras = text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const out = [];
+  for (const p of paras) {
+    const m = p.match(/^#+\s*(.+)$/m);
+    if (p.length <= 700) out.push(p); else { let cur = ''; for (const s of (p.match(/[^.!?]+[.!?]+/g) || [p])) { if ((cur + s).length > 600) { out.push(cur.trim()); cur = ''; } cur += s; } if (cur.trim()) out.push(cur.trim()); }
+  }
+  return out;
+}
+function extractObligations(text) {
+  const found = [];
+  const re = /(by|before|until|no later than) the (\d{1,2})(st|nd|rd|th)( of (each|every|the following) month)?/gi; let m;
+  while ((m = re.exec(text))) found.push({ kind: 'time', detail: `Due on day ${m[2]} of the month`, due: { day_of_month: +m[2] } });
+  const re2 = /(\d{1,3}) (business )?days before (expiry|renewal|the deadline|the due date)/gi;
+  while ((m = re2.exec(text))) found.push({ kind: 'lead', detail: `Lead time ${m[1]} days before ${m[3]}`, lead: +m[1] });
+  const re3 = /(every|each) (monday|tuesday|wednesday|thursday|friday|week|month|quarter)/gi;
+  while ((m = re3.exec(text))) found.push({ kind: 'recurring', detail: `Recurring: ${m[0]}` });
+  const re4 = /more than (\d+) (days|hours)/gi;
+  while ((m = re4.exec(text))) found.push({ kind: 'state', detail: `State threshold: more than ${m[1]} ${m[2]}`, n: +m[1], unit: m[2] });
+  return found;
+}
+
+// ---------- rule engine
+function getRule(id) { return state.rules.find(r => r.id === id); }
+function evalThreshold(rule, rows, field) {
+  const n = Math.max(2, Math.floor((rule.baseline.window_days || 28) / 7));
+  const thr = +rule.condition.ratio_lt, need = +rule.condition.consecutive || 1, minB = +rule.condition.min_baseline || 0;
+  const pts = [], firings = []; let run = 0;
+  rows.forEach((r, i) => {
+    const hist = []; for (let k = 1; k <= n; k++) if (i - 7 * k >= 0) hist.push(rows[i - 7 * k][field]);
+    let baseline = null, ratio = null, breach = false;
+    if (hist.length >= 2) { baseline = median(hist); ratio = baseline > 0 ? r[field] / baseline : null; breach = ratio !== null && ratio < thr && baseline >= minB; }
+    run = breach ? run + 1 : 0;
+    const fired = run >= need;
+    pts.push({ date: r.date, value: r[field], baseline, ratio, breach, fired, first: fired && run === need, thrLine: baseline == null ? null : baseline * thr });
+    if (fired && run === need) firings.push({ date: r.date, ratio, value: r[field], baseline });
+  });
+  return { points: pts, firings, lastFired: pts.length && pts[pts.length - 1].fired };
+}
+function thresholdField(rule) { return rule.signal.endsWith('impressions') ? 'impressions' : 'clicks'; }
+function timeStatus(r) {
+  let due;
+  if (r.due.date) due = parseDate(r.due.date);
+  else { due = new Date(today); due.setDate(Math.min(r.due.day_of_month, 28)); if (due < today) due.setMonth(due.getMonth() + 1); }
+  const daysLeft = Math.round((due - today) / 864e5);
+  const leads = [...(r.lead_times_days || [])].map(Number).sort((a, b) => b - a);
+  const inWindow = leads.some(l => daysLeft <= l);
+  const phase = daysLeft < 0 ? 'overdue' : inWindow ? 'reminding' : 'upcoming';
+  const next = leads.filter(l => l < daysLeft).sort((a, b) => b - a)[0];
+  return { due: fmtDate(due), daysLeft, phase, leads, nextReminderIn: next == null ? null : daysLeft - next };
+}
+function evalState(r) {
+  if (r.entity === 'orders') return state.orders.filter(o => o.status === (r.where.status || o.status) && o.days > +r.condition.days_in_status_gt);
+  if (r.entity === 'tickets') return [{ id: 'WEB-418', customer: 'Nordlicht GmbH', status: 'open', hours: 5.2 }, { id: 'FIN-77', customer: 'internal', status: 'open', hours: 1.1 }].filter(t => t.hours > +r.condition.hours_open_gt);
+  return [];
+}
+function severityForTime(ts) { return ts.phase === 'overdue' ? 'critical' : ts.daysLeft <= 3 ? 'high' : 'medium'; }
+function openTaskFor(ruleId, key) { return state.tasks.find(t => t.ruleId === ruleId && t.status !== 'done' && (key == null || t.key === key)); }
+function addEvent(kind, what, detail) { state.events.unshift({ at: nowStr(), kind, what, detail }); state.events = state.events.slice(0, 60); }
+function audit(actor, kind, detail) { state.audit.unshift({ at: nowStr(), actor, kind, detail }); state.audit = state.audit.slice(0, 200); }
+
+function evaluateRules(ruleIds, source) {
+  const results = [];
+  for (const id of ruleIds) {
+    const r = getRule(id); if (!r) continue;
+    if (r.type === 'threshold') {
+      const field = thresholdField(r);
+      for (const page of r.scope_pages) {
+        const rows = state.metrics[page]; if (!rows) continue;
+        const ev = evalThreshold(r, rows, field); const last = ev.points[ev.points.length - 1];
+        const fired = ev.lastFired;
+        results.push({ rule: r, page, fired, ratio: last.ratio, value: last.value, baseline: last.baseline });
+        if (fired && r.status === 'active' && !openTaskFor(r.id, page)) {
+          const t = { id: uid('task'), ruleId: r.id, type: 'threshold', key: page, page, severity: r.severity, owner: r.owner_role, status: 'open', createdAt: nowStr(), cause: state.scenario.applied && state.scenario.page === page ? state.scenario.cause : 'unknown',
+            title: `${field === 'clicks' ? 'Organic clicks' : 'Impressions'} on ${page} at ${pct(last.ratio)} of baseline`,
+            evidence: `${field} ${last.value} vs same-weekday median ${Math.round(last.baseline)} over ${r.baseline.window_days} days; below ${pct(r.condition.ratio_lt)} for ${r.condition.consecutive} consecutive days.` };
+          state.tasks.unshift(t); addEvent('rule', `${r.id} fired`, `${page}: ${pct(last.ratio)} of baseline → task for ${r.owner_role}`); audit('rule-engine', 'rule.fired', `${r.id} v1 ${page} → ${t.id} (${r.severity}, ${r.owner_role})`);
+        } else if (fired && r.status === 'shadow') {
+          addEvent('shadow', `${r.id} would have fired`, `${page}: ${pct(last.ratio)} of baseline (shadow mode, no notification)`);
+        }
+      }
+    } else if (r.type === 'time') {
+      const ts = timeStatus(r); const fired = ts.phase !== 'upcoming';
+      results.push({ rule: r, fired, ts });
+      if (fired && r.status === 'active' && !openTaskFor(r.id)) {
+        const t = { id: uid('task'), ruleId: r.id, type: 'time', severity: severityForTime(ts), owner: r.owner_role, status: 'open', createdAt: nowStr(), title: `${r.description.replace(/\.$/, '')} – due ${ts.due} (${ts.daysLeft < 0 ? Math.abs(ts.daysLeft) + ' days overdue' : 'in ' + ts.daysLeft + ' days'})`, evidence: `Lead times ${ts.leads.join('/')} days; today is ${ts.daysLeft} days before the due date.` };
+        state.tasks.unshift(t); addEvent('rule', `${r.id} fired`, `due ${ts.due} → task for ${r.owner_role}`); audit('rule-engine', 'rule.fired', `${r.id} → ${t.id}`);
+      }
+    } else if (r.type === 'state') {
+      const rec = evalState(r); results.push({ rule: r, fired: rec.length > 0, records: rec });
+      for (const o of rec) {
+        if (r.status === 'active' && !openTaskFor(r.id, o.id)) {
+          const t = { id: uid('task'), ruleId: r.id, type: 'state', key: o.id, severity: r.severity, owner: r.owner_role, status: 'open', createdAt: nowStr(), title: `${o.id} ${r.entity === 'orders' ? 'awaiting payment for ' + o.days + ' days' : 'without response for ' + o.hours + ' h'}`, evidence: JSON.stringify(o) };
+          state.tasks.unshift(t); addEvent('rule', `${r.id} fired`, `${o.id} → task for ${r.owner_role}`); audit('rule-engine', 'rule.fired', `${r.id} ${o.id} → ${t.id}`);
+        }
+      }
+    }
+  }
+  if (source) addEvent('schedule', `${source} ran`, `${ruleIds.length} rule(s) evaluated, ${results.filter(x => x.fired).length} condition(s) met`);
+  return results;
+}
+
+// ---------- policy + tools
+function policyDecision(tool, args) {
+  if (tool === 'erp.create_payment_reminder') {
+    const amt = +args.amount || 0, lvl = +args.level || 1, fl = args.customer_flagged === true || args.customer_flagged === 'true';
+    if (lvl > 3) return { allow: 'forbid', rule: 'policy-payment-reminders', why: 'reminder level above 3 is never sent by the assistant' };
+    if (lvl === 3 || fl) return { allow: 'approve', approver: 'finance_lead', rule: 'policy-payment-reminders', why: lvl === 3 ? 'level 3 is a collection notice' : 'customer is flagged' };
+    if (amt < 500 && lvl <= 2) return { allow: 'auto', rule: 'policy-payment-reminders', why: 'amount below 500 and level ≤ 2' };
+    return { allow: 'approve', approver: 'finance_lead', rule: 'policy-payment-reminders', why: 'amount 500 or above' };
+  }
+  if (tool.startsWith('cms.')) {
+    if (args.dry_run === true || args.dry_run === 'true') return { allow: 'auto', rule: 'policy-cms-writes', why: 'dry run changes nothing' };
+    if (KEY_PAGES.includes(args.path)) return { allow: 'approve', approver: 'seo_owner', rule: 'policy-cms-writes', why: `${args.path} is a key page` };
+    return { allow: 'auto', rule: 'policy-cms-writes', why: 'not a key page' };
+  }
+  if (tool === 'slack.post_message') {
+    if (args.channel === '#general') return { allow: 'approve', approver: 'marketing_lead', rule: 'policy-communication', why: 'company-wide channel' };
+    return { allow: 'auto', rule: 'policy-communication', why: 'team channel' };
+  }
+  const t = TOOLS.find(x => x.name === tool);
+  if (t && t.cls === 'write' && t.risk === 'high') return { allow: 'approve', approver: 'finance_lead', rule: 'default', why: 'high-risk write without a specific policy' };
+  return { allow: 'auto', rule: 'default', why: t && t.cls === 'read' ? 'read-only tool' : 'low-risk action' };
+}
+function sessionsFor(page, days) { return state.metrics[page].slice(-days).map(r => ({ date: r.date, sessions: Math.round(r.clicks * 1.62) })); }
+function diffFor(url, sinceDays) {
+  const sc = state.scenario;
+  if (sc.applied && sc.page === url) {
+    const when = dayStr(-(sc.days + 1)) + ' 10:05';
+    if (sc.cause === 'noindex') return { changes: [{ field: 'robots', before: 'index,follow', after: 'noindex,follow', at: when }], summary: 'robots meta changed to noindex' };
+    if (sc.cause === 'title') return { changes: [{ field: 'title', before: 'Pricing – plans for every team size | Example', after: 'Example', at: when }, { field: 'meta_description', before: 'Compare plans…', after: '', at: when }], summary: 'title shortened to brand only, meta description removed' };
+    if (sc.cause === 'server') return { changes: [], summary: 'no on-page changes; 23 % of crawler requests in the window returned 503' };
+  }
+  return { changes: [], summary: `no SEO-relevant changes in the last ${sinceDays} days` };
+}
+function runTool(name, args) {
+  const a = { ...args };
+  switch (name) {
+    case 'kb.search': { const hits = kbSearch(a.query, { department: a.department || undefined }); return { hits: hits.map(h => ({ doc: h.doc.title, section: h.chunk.heading, score: +h.score.toFixed(2) })) }; }
+    case 'metrics.query': { const rule = state.rules.find(r => r.type === 'threshold' && thresholdField(r) === (a.signal.endsWith('impressions') ? 'impressions' : 'clicks')) || state.rules[0]; const ev = evalThreshold(rule, state.metrics[a.page], a.signal.endsWith('impressions') ? 'impressions' : 'clicks'); return { signal: a.signal, page: a.page, rows: ev.points.slice(-(+a.days || 14)).map(p => ({ date: p.date, value: p.value, baseline: p.baseline && Math.round(p.baseline), ratio: p.ratio && +p.ratio.toFixed(2) })) }; }
+    case 'entities.sql': return { rows: PEOPLE.filter(p => /finance/i.test(a.query) ? p.team.includes('Finance') || p.team.includes('Management') : true).map(({ role, name, channel }) => ({ role, name, channel })), note: 'allow-listed tables: people, systems, deadlines, processes' };
+    case 'seo.get_search_console_series': return { page: a.page, rows: state.metrics[a.page].slice(-(+a.days || 7)).map(r => ({ date: r.date, clicks: r.clicks, impressions: r.impressions, ctr: +(r.clicks / r.impressions).toFixed(4), position: 6.3 })) };
+    case 'analytics.get_sessions': return { page: a.page, rows: sessionsFor(a.page, +a.days || 7) };
+    case 'crawler.fetch_page': { const d = diffFor(a.url, 7); const robots = d.changes.find(c => c.field === 'robots'); const title = d.changes.find(c => c.field === 'title'); return { url: a.url, status: state.scenario.applied && state.scenario.cause === 'server' && state.scenario.page === a.url ? 503 : 200, title: title ? title.after : 'Pricing – plans for every team size | Example', canonical: a.url, robots: robots ? robots.after : 'index,follow', h1: 'Simple pricing' }; }
+    case 'crawler.diff_page': return { url: a.url, since_days: +a.since_days || 7, ...diffFor(a.url, +a.since_days || 7) };
+    case 'uptime.status': { const bad = state.scenario.applied && state.scenario.cause === 'server'; return { days: +a.days || 7, availability: bad ? '97.4 %' : '100 %', error_rate_5xx: bad ? '12.1 % (since ' + dayStr(-state.scenario.days) + ')' : '0.0 %' }; }
+    case 'deploy.list_recent': return { system: a.system, deployments: state.deploys.filter(d => d.system === a.system) };
+    case 'cms.remove_noindex': return a.dry_run === true || a.dry_run === 'true' ? { dry_run: true, path: a.path, planned_change: { robots: { from: 'noindex,follow', to: 'index,follow' } }, note: 'Nothing changed. Live run requires approval from seo_owner for key pages.' } : { dry_run: false, path: a.path, changed: { robots: 'index,follow' }, published_at: nowStr() };
+    case 'cms.set_page_meta': return a.dry_run === true || a.dry_run === 'true' ? { dry_run: true, path: a.path, planned_change: { title: a.title } } : { dry_run: false, path: a.path, changed: { title: a.title }, published_at: nowStr() };
+    case 'erp.get_period_status': return { period: a.period, status: 'open', open_items: { unbooked_supplier_invoices: 4, unreconciled_bank_statements: 1 } };
+    case 'erp.list_overdue_invoices': return { items: state.invoices.filter(i => i.overdue >= (+a.min_days || 0)) };
+    case 'erp.create_payment_reminder': return a.dry_run === true || a.dry_run === 'true' ? { dry_run: true, would_send: `level ${a.level} reminder for ${a.invoice_id}, ${a.amount} EUR` } : { sent: true, invoice_id: a.invoice_id, level: +a.level, sent_at: nowStr() };
+    case 'orders.list_by_status': return { items: state.orders.filter(o => o.status === a.status) };
+    case 'slack.post_message': return { ok: true, channel: a.channel, ts: Date.now() / 1000, preview: a.text };
+    case 'ticketing.create_issue': return { key: a.project + '-' + (420 + Math.floor(Math.random() * 50)), summary: a.summary, url: 'https://jira.example/browse/' + a.project };
+    case 'tls.expiry': return { host: a.host, expires: dayStr(9), days_left: 9, issuer: 'Example CA' };
+    default: return { error: 'unknown tool' };
+  }
+}
+function callTool(name, args, actor, opts = {}) {
+  const dec = policyDecision(name, args);
+  if (dec.allow === 'forbid') { audit(actor, 'tool.forbidden', `${name} ${JSON.stringify(args)} → forbidden (${dec.rule}: ${dec.why})`); return { decision: dec }; }
+  if (dec.allow === 'approve') {
+    const dry = runTool(name, { ...args, dry_run: true });
+    const ap = { id: uid('apr'), tool: name, args, dryRun: typeof dry === 'object' ? JSON.stringify(dry.planned_change || dry.would_send || dry) : String(dry), requestedBy: actor, approver: dec.approver, rule: dec.rule, status: 'pending', at: nowStr(), taskId: opts.taskId || null };
+    state.approvals.unshift(ap); addEvent('approval', name, `waits for ${dec.approver} (${dec.why})`); audit(actor, 'tool.dry_run', `${name} ${JSON.stringify(args)} → approval ${ap.id} requested (${dec.rule})`);
+    return { decision: dec, approval: ap, dry };
+  }
+  const res = runTool(name, args); audit(actor, 'tool.call', `${name} ${JSON.stringify(args)} → ok (${dec.rule})`);
+  return { decision: dec, result: res };
+}
+
+// ---------- scenario + agent trace
+function applyScenario() {
+  const sc = state.scenario;
+  if (sc.applied) resetScenario(true);
+  const rows = state.metrics[sc.page]; const n = Math.min(+sc.days, rows.length);
+  const f = 1 - (+sc.drop) / 100;
+  for (let i = rows.length - n; i < rows.length; i++) {
+    rows[i].clicks = Math.round(rows[i].clicks * f);
+    if (sc.cause !== 'title') rows[i].impressions = Math.round(rows[i].impressions * (sc.cause === 'server' ? f : f * 1.1));
+  }
+  if (sc.cause === 'noindex' || sc.cause === 'title') state.deploys.unshift({ system: 'cms', at: dayStr(-(n + 1)) + ' 10:05', by: 'k.nagy', note: sc.cause === 'noindex' ? 'Pricing page template update (staging flag left on)' : 'New pricing page title test', scenario: true });
+  sc.applied = true;
+  addEvent('test', 'Scenario applied', `${sc.page}: clicks −${sc.drop} % for ${n} days (cause: ${sc.cause})`);
+  const res = evaluateRules(state.rules.filter(r => r.type === 'threshold').map(r => r.id), 'daily-seo-collect (test run)');
+  state.lastEval = res;
+  const task = state.tasks.find(t => t.page === sc.page && t.status !== 'done' && t.type === 'threshold');
+  if (task && !task.trace) buildTrace(task);
+  return { res, task };
+}
+function resetScenario(silent) {
+  state.metrics = genMetrics(); state.deploys = state.deploys.filter(d => !d.scenario);
+  state.tasks = state.tasks.filter(t => !(t.type === 'threshold' && t.status !== 'done'));
+  state.approvals = state.approvals.filter(a => !a.taskId || state.tasks.some(t => t.id === a.taskId));
+  state.scenario.applied = false; state.lastEval = null;
+  if (!silent) addEvent('test', 'Scenario reset', 'metrics restored to demo baseline');
+}
+function buildTrace(task) {
+  const rule = getRule(task.ruleId); const page = task.page; const rows = state.metrics[page];
+  const ev = evalThreshold(rule, rows, 'clicks'); const last = ev.points[ev.points.length - 1];
+  const evI = evalThreshold({ ...rule, condition: { ...rule.condition, min_baseline: 0 } }, rows, 'impressions'); const lastI = evI.points[evI.points.length - 1];
+  const impDown = lastI.ratio != null && lastI.ratio < 0.8;
+  const cause = task.cause || 'unknown';
+  const steps = []; const actor = 'agent:monitoring';
+  const diff = runTool('crawler.diff_page', { url: page, since_days: 7 });
+  const up = runTool('uptime.status', { days: 7 });
+  const dep = runTool('deploy.list_recent', { system: 'cms', days: 7 });
+  const kb = kbSearch('page owner CMS release process pre-publish checklist')[0];
+  steps.push({ call: `metrics.query(signal=search_console.impressions, page=${page}, days=35)`, res: `Impressions at ${pct(lastI.ratio)} of baseline`, note: impDown ? 'Impressions fell as well: a ranking or indexing problem, not a snippet problem.' : 'Impressions are flat: clicks fell alone, so the snippet (title or meta) or a SERP feature changed.' });
+  steps.push({ call: `analytics.get_sessions(page=${page}, days=7)`, res: `Sessions follow the same curve (${pct(last.ratio)} of usual)`, note: 'Two independent sources agree: this is not a Search Console reporting glitch.' });
+  steps.push({ call: `uptime.status(days=7)`, res: `Availability ${up.availability}, 5xx rate ${up.error_rate_5xx}`, note: cause === 'server' ? 'Server errors started with the drop. Googlebot is being turned away.' : 'The site has been up. Availability is ruled out.' });
+  steps.push({ call: `crawler.diff_page(url=${page}, since_days=7)`, res: diff.summary, note: diff.changes.length ? diff.changes.map(c => `${c.field}: "${c.before}" → "${c.after}" at ${c.at}`).join('; ') : 'No change to title, meta, robots, canonical or H1.' });
+  steps.push({ call: `deploy.list_recent(system=cms, days=7)`, res: dep.deployments.length ? dep.deployments.map(d => `${d.at} by ${d.by}: ${d.note}`).join(' · ') : 'No CMS deployment in the window', note: dep.deployments.some(d => d.scenario) ? 'A deployment landed the day before the drop began.' : 'No deployment correlates with the drop.' });
+  if (kb) steps.push({ call: `kb.search("page owner CMS release process")`, res: `${kb.doc.title} › ${kb.chunk.heading}`, note: 'Owner and the pre-publish checklist come from the knowledge base, not from the prompt.' });
+  const causes = {
+    noindex: ['A robots noindex tag was added to the page by the CMS deployment (high confidence)', 'Ranking loss after a content change (low)', 'Algorithm update (low, drop is page-specific)'],
+    title: ['Title and meta description were replaced by the CMS deployment; impressions are unchanged, CTR collapsed (high confidence)', 'A competitor won a SERP feature for the main query (low)'],
+    server: ['The server returns 503 for about a quarter of requests; Googlebot drops pages that fail repeatedly (high confidence)', 'Core Web Vitals regression (low)'],
+    unknown: ['Site-wide or query-level ranking change, possibly an algorithm update (medium)', 'Seasonality for this page (medium)', 'Lost backlinks or a SERP layout change (low)'],
+  }[cause];
+  const owner = PEOPLE.find(p => p.role === rule.owner_role);
+  const alert = `*${task.title}*\nClicks ${last.value}/day vs usual ${Math.round(last.baseline)} (${pct(last.ratio)}), ${rule.condition.consecutive}+ days.\nLikely causes:\n${causes.map((c, i) => `${i + 1}. ${c}`).join('\n')}\nRecommended: ${cause === 'noindex' ? 'remove the noindex tag (approval card sent)' : cause === 'title' ? 'restore the previous title and meta (approval card sent)' : cause === 'server' ? 'IT to investigate the 503s; ticket created' : 'monitor for 3 more days; ticket created for a manual review'}.\nRule: ${rule.id} · Task: ${task.id}`;
+  steps.push({ call: `slack.post_message(channel=${owner ? owner.channel : '#marketing'})`, res: 'Alert posted (policy: auto, owner channel)', note: `Owner: ${owner ? owner.name : rule.owner_role}.`, act: true });
+  let action = null;
+  if (cause === 'noindex') action = callTool('cms.remove_noindex', { path: page, dry_run: false }, actor, { taskId: task.id });
+  else if (cause === 'title') action = callTool('cms.set_page_meta', { path: page, title: 'Pricing – plans for every team size | Example', dry_run: false }, actor, { taskId: task.id });
+  else action = callTool('ticketing.create_issue', { project: cause === 'server' ? 'ITOPS' : 'WEB', summary: `${cause === 'server' ? 'Investigate 503 errors affecting' : 'Review organic drop on'} ${page}` }, actor, { taskId: task.id });
+  if (action.approval) steps.push({ call: `${action.approval.tool}(${Object.entries(action.approval.args).map(([k, v]) => k + '=' + v).join(', ')})`, res: `Dry run ok → approval requested from ${action.approval.approver}`, note: `Policy ${action.decision.rule}: ${action.decision.why}.`, act: true });
+  else if (action.result) steps.push({ call: `${cause === 'server' ? 'ticketing.create_issue(project=ITOPS)' : 'ticketing.create_issue(project=WEB)'}`, res: `Created ${action.result.key}`, note: `Policy ${action.decision.rule}: ${action.decision.why}.`, act: true });
+  task.trace = { steps, alert, causes, approvalId: action.approval ? action.approval.id : null, ticket: action.result ? action.result.key : null, builtAt: nowStr() };
+  audit(actor, 'episode.recorded', `${task.id}: cause=${cause}, detect=1 day, action=${action.approval ? 'approval ' + action.approval.id : 'ticket ' + (action.result && action.result.key)}`);
+  return task.trace;
+}
+
+// ---------- assistant chat
+function chatAnswer(q) {
+  const lq = q.toLowerCase();
+  if (/deadline|due|overdue|upcoming|határid/.test(lq)) {
+    const items = state.rules.filter(r => r.type === 'time' && r.status === 'active').map(r => ({ r, ts: timeStatus(r) })).sort((a, b) => a.ts.daysLeft - b.ts.daysLeft);
+    return `<b>Deadlines in the next 60 days</b><ul style="margin:6px 0 0 16px;padding:0">${items.filter(x => x.ts.daysLeft <= 60).map(x => `<li>${esc(x.r.description.replace(/\.$/, ''))} – <b>${x.ts.due}</b> (${x.ts.daysLeft < 0 ? Math.abs(x.ts.daysLeft) + ' days overdue' : 'in ' + x.ts.daysLeft + ' days'}), owner ${esc(personName(x.r.owner_role))}</li>`).join('')}</ul><div class="src">Source: entity store › deadlines (time rules)</div>`;
+  }
+  if (/who (owns|is responsible|handles)|owner of/.test(lq)) {
+    const hits = kbSearch(q); const ans = composeAnswer(hits);
+    const role = PEOPLE.find(p => lq.includes(p.team.toLowerCase().split(' ')[0]) || lq.includes(p.role.replace('_', ' ')));
+    return (ans ? `${esc(ans.text)}<div class="src">Source: ${esc(ans.source.doc.title)} › ${esc(ans.source.chunk.heading)}</div>` : '') + (role ? `<div class="src">Entity store: ${esc(role.role)} = ${esc(role.name)} (${esc(role.channel)})</div>` : '');
+  }
+  if (/(run|simulate|check|test).*(seo|scenario|drop)/.test(lq)) {
+    const { task } = applyScenario();
+    return task ? `Scenario applied and rules evaluated. <b>${esc(getRule(task.ruleId).id)}</b> fired for ${esc(task.page)}; I ran the ${esc(getRule(task.ruleId).playbook)} playbook. Open the <b>Test lab › Scenario</b> tab for the trace.` : 'Scenario applied, but no active rule fired. Increase the drop or the number of days.';
+  }
+  if (/open tasks|what.*(pending|waiting)|approvals?/.test(lq)) {
+    const open = state.tasks.filter(t => t.status !== 'done'), ap = state.approvals.filter(a => a.status === 'pending');
+    return `${open.length} open task(s) and ${ap.length} pending approval(s).<ul style="margin:6px 0 0 16px;padding:0">${open.slice(0, 5).map(t => `<li>${esc(t.title)} · ${esc(personName(t.owner))}</li>`).join('')}</ul>`;
+  }
+  const hits = kbSearch(q); const ans = composeAnswer(hits);
+  if (!ans || ans.confidence < 0.58) {
+    if (!state.gaps.some(g => g.q === q)) state.gaps.unshift({ q, asked: 1, by: 'console user', at: TODAY });
+    return `I could not find this in the knowledge base. I logged the question as a gap for the document owners.${hits.length ? `<div class="src">Nearest documents: ${hits.slice(0, 2).map(h => esc(h.doc.title)).join(', ')}</div>` : ''}`;
+  }
+  return `${esc(ans.text)}<div class="src">Source: ${esc(ans.source.doc.title)} › ${esc(ans.source.chunk.heading)} · updated ${ans.source.doc.updated}${daysSince(ans.source.doc.updated) > ans.source.doc.reviewEvery ? ' · <span style="color:var(--warn)">past review date</span>' : ''}</div>`;
+}
+function personName(role) { const p = PEOPLE.find(x => x.role === role); return p ? p.name : role; }
+function daysSince(d) { return Math.round((today - parseDate(d)) / 864e5); }
+
+// ---------- shared view helpers
+const NAV = [
+  ['overview', 'Overview'], ['kb', 'Knowledge base'], ['rules', 'Rules'], ['triggers', 'Triggers'], ['tools', 'Tools'], ['playbooks', 'Playbooks'], ['lab', 'Test lab'], ['approvals', 'Approvals & audit'],
+];
+const sevPill = s => `<span class="pill ${s === 'critical' || s === 'high' ? 'crit' : s === 'medium' ? 'warn' : 'info'}">${esc(s)}</span>`;
+const statusPill = s => `<span class="pill ${s === 'active' ? 'ok' : s === 'shadow' ? 'info' : s === 'paused' ? 'warn' : s === 'ok' ? 'ok' : s === 'warn' ? 'warn' : ''}">${esc(s)}</span>`;
+const typePill = t => `<span class="pill flat ${t === 'threshold' ? 'warn' : t === 'time' ? 'info' : t === 'state' ? 'acc' : ''}">${esc(t)}</span>`;
+const tabs = (items, cur, action) => `<div class="tabs">${items.map(([k, l]) => `<button type="button" class="${cur === k ? 'on' : ''}" data-action="${action}" data-tab="${k}">${l}</button>`).join('')}</div>`;
+const kv = obj => `<dl class="kv">${Object.entries(obj).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
+const json = o => `<pre class="yaml">${esc(JSON.stringify(o, null, 2))}</pre>`;
+function setPath(obj, path, val) { const ks = path.split('.'); let o = obj; for (const k of ks.slice(0, -1)) { if (o[k] == null) o[k] = {}; o = o[k]; } o[ks[ks.length - 1]] = val; }
+
+function chartSVG(points, label) {
+  const w = 680, h = 210, pl = 44, pr = 12, pt = 12, pb = 26;
+  const vals = points.flatMap(p => [p.value, p.baseline || 0]); const max = (Math.max(...vals) || 1) * 1.12;
+  const x = i => pl + (i / Math.max(1, points.length - 1)) * (w - pl - pr); const y = v => pt + (1 - v / max) * (h - pt - pb);
+  const path = key => points.map((p, i) => p[key] == null ? null : `${i === 0 || points[i - 1][key] == null ? 'M' : 'L'}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).filter(Boolean).join(' ');
+  const area = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ') + ` L${x(points.length - 1).toFixed(1)},${y(0)} L${x(0)},${y(0)} Z`;
+  const ticks = [0, 0.5, 1].map(f => { const v = max * f / 1.12; return `<line x1="${pl}" x2="${w - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${Math.round(v)}</text>`; }).join('');
+  const xl = points.map((p, i) => i % 7 === points.length % 7 - 1 || i === points.length - 1 ? `<text x="${x(i)}" y="${h - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${p.date.slice(5)}</text>` : '').join('');
+  const marks = points.map((p, i) => p.breach ? `<circle cx="${x(i)}" cy="${y(p.value)}" r="${p.first ? 5 : 3.5}" fill="${p.fired ? 'var(--crit)' : 'var(--warn)'}" stroke="var(--panel)" stroke-width="1.5"><title>${p.date}: ${p.value} vs baseline ${Math.round(p.baseline)} (${pct(p.ratio)})</title></circle>` : '').join('');
+  const end = points[points.length - 1];
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">
+    ${ticks}
+    <path d="${area}" fill="var(--accent-soft)" opacity=".55"/>
+    <path d="${path('thrLine')}" fill="none" stroke="var(--crit)" stroke-width="1" stroke-dasharray="4 4"/>
+    <path d="${path('baseline')}" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
+    <path d="${path('value')}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    ${marks}
+    <circle cx="${x(points.length - 1)}" cy="${y(end.value)}" r="3" fill="var(--accent)"/>
+    ${xl}
+  </svg>
+  <div class="legend"><span><i style="background:var(--accent)"></i>signal</span><span><i style="background:var(--muted)"></i>same-weekday median baseline</span><span><i style="background:var(--crit);height:1px"></i>threshold</span><span><i style="background:var(--warn);height:8px;width:8px;border-radius:50%"></i>breach</span><span><i style="background:var(--crit);height:8px;width:8px;border-radius:50%"></i>rule fired</span></div>`;
+}
+
+// ---------- views
+function renderNav() {
+  const open = state.tasks.filter(t => t.status !== 'done').length, pend = state.approvals.filter(a => a.status === 'pending').length;
+  const counts = { overview: open, approvals: pend, rules: state.rules.length, kb: state.docs.length };
+  $('#nav').innerHTML = `<div class="brand"><div class="mark">AC</div><div><b>Assistant Control Room</b><small>staging · demo data</small></div></div>
+    ${NAV.map(([k, l]) => `<button type="button" class="${state.ui.view === k ? 'on' : ''}" data-action="nav" data-view="${k}"><span>${l}</span>${counts[k] ? `<span class="count">${counts[k]}</span>` : ''}</button>`).join('')}
+    <div class="grow"></div>
+    <div class="foot"><span>Prototype. All data is invented; engines run in the browser.</span><button type="button" class="lnk" data-action="reset-demo">Reset demo data</button></div>`;
+}
+
+function viewOverview() {
+  const open = state.tasks.filter(t => t.status !== 'done'); const pend = state.approvals.filter(a => a.status === 'pending');
+  const act = state.rules.filter(r => r.status === 'active').length, sh = state.rules.filter(r => r.status === 'shadow').length;
+  const chunks = state.docs.reduce((n, d) => n + d.chunks.length, 0);
+  const healthy = TOOLS.filter(t => t.health === 'ok').length;
+  const deadlines = state.rules.filter(r => r.type === 'time' && r.status === 'active').map(r => ({ r, ts: timeStatus(r) })).sort((a, b) => a.ts.daysLeft - b.ts.daysLeft);
+  return `<div class="page-h"><div><h1>Overview</h1><p>What needs a person right now, what the assistant is watching, and whether its parts are healthy.</p></div>
+    <div class="actions"><button class="btn" data-action="run-schedule" data-id="deadline-sweep">Run deadline sweep</button><button class="btn primary" data-action="nav" data-view="lab">Open test lab</button></div></div>
+  <div class="tiles">
+    <div class="tile ${open.some(t => t.severity === 'critical' || t.severity === 'high') ? 'crit' : ''}"><span class="lab">Open tasks</span><span class="val">${open.length}</span><span class="sub">${open.filter(t => t.status === 'open').length} not yet acknowledged</span></div>
+    <div class="tile ${pend.length ? 'warn' : ''}"><span class="lab">Pending approvals</span><span class="val">${pend.length}</span><span class="sub">actions waiting for a human</span></div>
+    <div class="tile"><span class="lab">Rules</span><span class="val">${act}</span><span class="sub">active · ${sh} in shadow · ${state.rules.filter(r => r.status === 'draft').length} draft</span></div>
+    <div class="tile"><span class="lab">Knowledge</span><span class="val">${state.docs.length}</span><span class="sub">documents · ${chunks} chunks indexed</span></div>
+    <div class="tile ${state.gaps.length ? 'warn' : 'ok'}"><span class="lab">Knowledge gaps</span><span class="val">${state.gaps.length}</span><span class="sub">unanswered questions</span></div>
+    <div class="tile ${healthy < TOOLS.length ? 'warn' : 'ok'}"><span class="lab">Tools healthy</span><span class="val">${healthy}/${TOOLS.length}</span><span class="sub">last contract test 02:30</span></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><div class="ph"><h2>Open tasks</h2><span class="hint">created by rules, worked by the agent</span></div><div class="pb tight">
+      ${open.length ? `<div class="list">${open.map(t => `<div class="item" data-action="open-task" data-id="${t.id}"><span class="stripe ${t.severity}"></span><div><b>${esc(t.title)}</b><span class="meta">${esc(t.ruleId)} · owner ${esc(personName(t.owner))} · ${esc(t.createdAt)}${t.trace ? ' · agent run available' : ''}</span></div><div class="row">${t.status === 'acked' ? '<span class="pill ok">acknowledged</span>' : `<button class="btn sm" data-action="ack-task" data-id="${t.id}">Acknowledge</button>`}</div></div>`).join('')}</div>` : '<div class="empty">Nothing open. Apply a scenario in the test lab to see a task appear.</div>'}
+    </div></div>
+    <div class="panel"><div class="ph"><h2>Upcoming deadlines</h2><span class="hint">from time rules</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Deadline</th><th>Due</th><th>Owner</th><th>State</th></tr></thead><tbody>
+      ${deadlines.map(({ r, ts }) => `<tr class="click" data-action="open-rule" data-id="${r.id}"><td>${esc(r.description.replace(/\.$/, ''))}</td><td class="nowrap">${ts.due}<br><span class="hint">${ts.daysLeft < 0 ? Math.abs(ts.daysLeft) + ' days overdue' : 'in ' + ts.daysLeft + ' days'}</span></td><td>${esc(personName(r.owner_role))}</td><td>${ts.phase === 'overdue' ? '<span class="pill crit">overdue</span>' : ts.phase === 'reminding' ? '<span class="pill warn">reminding</span>' : `<span class="pill">next reminder in ${ts.nextReminderIn} d</span>`}</td></tr>`).join('')}
+    </tbody></table></div></div></div>
+  </div>
+  <div class="panel"><div class="ph"><h2>Recent activity</h2><a href="#triggers" data-action="nav" data-view="triggers" class="small">event log</a></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>When</th><th>Kind</th><th>What</th><th>Detail</th></tr></thead><tbody>
+    ${state.events.slice(0, 8).map(e => `<tr><td class="nowrap mono">${esc(e.at)}</td><td><span class="tag">${esc(e.kind)}</span></td><td>${esc(e.what)}</td><td class="muted">${esc(e.detail)}</td></tr>`).join('')}
+  </tbody></table></div></div></div>`;
+}
+
+function viewKB() {
+  const t = state.ui.kbTab;
+  const head = `<div class="page-h"><div><h1>Knowledge base</h1><p>What the assistant knows: documents from the company sources, the structured entities (deadlines, people, systems), the glossary, and the questions it could not answer.</p></div>
+    <div class="actions"><button class="btn" data-action="kb-tab" data-tab="ask">Ask the knowledge base</button><button class="btn primary" data-action="kb-tab" data-tab="add">Add knowledge</button></div></div>
+    ${tabs([['documents', 'Documents'], ['ask', 'Ask'], ['add', 'Add knowledge'], ['sources', 'Sources'], ['entities', 'Entities'], ['glossary', 'Glossary'], ['gaps', `Gaps (${state.gaps.length})`]], t, 'kb-tab')}`;
+  if (t === 'documents') {
+    const d = state.docs.find(x => x.id === state.ui.docId);
+    return head + `<div class="split"><div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Document</th><th>Type</th><th>Dept</th><th>Chunks</th><th>Updated</th></tr></thead><tbody>
+      ${state.docs.map(x => `<tr class="click ${d && d.id === x.id ? 'sel' : ''}" data-action="open-doc" data-id="${x.id}"><td><b>${esc(x.title)}</b><br><span class="hint">${esc(state.sources.find(s => s.id === x.source)?.name || x.source)}</span></td><td><span class="tag">${esc(x.type)}</span></td><td>${esc(x.dept)}</td><td class="num">${x.chunks.length}</td><td class="nowrap">${x.updated}${daysSince(x.updated) > x.reviewEvery ? '<br><span class="pill warn">review due</span>' : ''}</td></tr>`).join('')}
+    </tbody></table></div></div></div>
+    <div class="panel">${d ? `<div class="ph"><h2>${esc(d.title)}</h2><div class="row"><span class="pill flat">ACL: ${esc(d.acl.join(', '))}</span><button class="btn sm" data-action="kb-ask-doc" data-id="${d.id}">Ask about this</button></div></div><div class="pb stack">
+      ${kv({ owner: esc(personName(d.owner)), department: esc(d.dept), type: esc(d.type), 'last updated': `${d.updated} (${daysSince(d.updated)} days ago, review every ${d.reviewEvery} days)`, source: esc(state.sources.find(s => s.id === d.source)?.name || d.source) })}
+      <h3>Indexed chunks</h3>
+      ${d.chunks.map((c, i) => `<div class="hit"><div class="t">${esc(c.heading)} <span class="score">chunk ${i + 1} · ${tokens(c.text).length} tokens</span></div><div class="small">${esc(c.text)}</div></div>`).join('')}
+      ${d.extracted && d.extracted.length ? `<h3>Obligations extracted at ingestion</h3><ul class="small" style="margin:0;padding-left:18px">${d.extracted.map(e => `<li>${esc(e.detail)}</li>`).join('')}</ul>` : ''}
+    </div>` : '<div class="empty">Select a document to see its chunks, metadata and access control.</div>'}</div></div>`;
+  }
+  if (t === 'ask') {
+    const res = state.kbResults; const ans = res ? composeAnswer(res.hits) : null;
+    return head + `<div class="panel"><div class="pb stack">
+      <form data-form="kb-ask" class="row"><input id="kb-q" name="q" class="btn" style="flex:1;min-width:220px;cursor:text;text-align:left;font-weight:400" placeholder="e.g. How many days before expiry do we renew the TLS certificate?" value="${esc(state.kbQuery)}" autocomplete="off"><select id="kb-dept" name="department" class="btn"><option value="">all departments</option>${['finance', 'it', 'marketing', 'sales', 'hr', 'procurement'].map(x => `<option ${res && res.department === x ? 'selected' : ''}>${x}</option>`).join('')}</select><button class="btn primary" type="submit">Search</button></form>
+      <div class="chips">${GOLDEN.slice(0, 5).map(g => `<button type="button" class="chip" data-action="kb-ask-q" data-q="${esc(g.q)}">${esc(g.q)}</button>`).join('')}</div>
+      ${res ? (res.hits.length ? `<div class="msg"><div class="from">Composed answer · confidence ${pct(ans.confidence)}</div>${esc(ans.text)}<div class="hint" style="margin-top:6px">Source: ${esc(ans.source.doc.title)} › ${esc(ans.source.chunk.heading)}. Retrieval: hybrid (keyword + glossary expansion) · ${res.terms.length} terms: ${res.terms.map(x => `<code>${esc(x)}</code>`).join(' ')}</div></div>
+        <h3>Matching chunks</h3>${res.hits.map(h => `<div class="hit"><div class="t">${esc(h.doc.title)} › ${esc(h.chunk.heading)} <span class="score">score ${h.score.toFixed(2)}</span></div><div class="small">${highlight(h.chunk.text, h.matched)}</div><div class="path">${esc(h.doc.dept)} · ACL ${esc(h.doc.acl.join(', '))} · updated ${h.doc.updated}</div></div>`).join('')}` : `<div class="empty">No chunk matched. The question was logged under Gaps so a document owner can fill it.</div>`) : ''}
+    </div></div>`;
+  }
+  if (t === 'add') {
+    const r = state.addResult;
+    return head + `<div class="grid2"><div class="panel"><div class="ph"><h2>Add a document</h2><span class="hint">paste text, drop a .txt/.md file, or give a URL</span></div><div class="pb">
+      <form data-form="kb-add" class="form">
+        <div class="field"><label for="ad-title">Title</label><input id="ad-title" name="title" required placeholder="Travel expense policy"></div>
+        <div class="field"><label for="ad-type">Document type</label><select id="ad-type" name="type"><option>policy</option><option>sop</option><option>guideline</option><option>manual</option><option>contract</option><option>checklist</option><option>meeting note</option></select></div>
+        <div class="field"><label for="ad-dept">Department</label><select id="ad-dept" name="dept"><option>finance</option><option>it</option><option>marketing</option><option>sales</option><option>hr</option><option>procurement</option></select></div>
+        <div class="field"><label for="ad-owner">Owner role</label><select id="ad-owner" name="owner">${PEOPLE.map(p => `<option value="${p.role}">${p.role} · ${p.name}</option>`).join('')}</select></div>
+        <div class="field"><label for="ad-acl">Who may read it (groups)</label><input id="ad-acl" name="acl" value="all-staff" placeholder="finance, management"></div>
+        <div class="field"><label for="ad-url">Source URL (optional)</label><input id="ad-url" name="url" placeholder="https://sharepoint/…"></div>
+        <div class="field wide"><label for="ad-file">Or upload a text file</label><input id="ad-file" name="file" type="file" accept=".txt,.md,.csv"></div>
+        <div class="field wide"><label for="ad-text">Content</label><textarea id="ad-text" name="text" placeholder="Paste the document text. Blank lines separate chunks. Sentences like 'must be submitted by the 10th of each month' or 'renewed 30 days before expiry' are detected as obligations and offered as draft rules.">Travel expenses must be submitted in the ERP expense module by the 10th of the following month. Claims submitted later than 60 days after the trip are not reimbursed.
+
+Mileage is reimbursed at the statutory rate published by NAV each year. The finance lead publishes the current rate in January.
+
+Managers approve claims within 5 business days. Claims open for more than 10 days are escalated to the finance lead.</textarea></div>
+        <div class="field wide"><button class="btn primary" type="submit">Ingest into the knowledge base</button></div>
+      </form></div></div>
+      <div class="panel"><div class="ph"><h2>Ingestion</h2><span class="hint">what the pipeline does with it</span></div><div class="pb stack">
+        ${r ? `<div class="pipe">${['parse', 'clean & dedupe', 'chunk', 'enrich', 'embed', 'index', 'ACL stamp'].map((s, i) => `<span class="${i < r.stage ? 'done' : i === r.stage ? 'run' : ''}">${s}</span>`).join('')}</div>
+          ${r.stage >= 7 ? `<div class="msg"><div class="from">Indexed</div><b>${esc(r.doc.title)}</b> · ${r.doc.chunks.length} chunks · readable by ${esc(r.doc.acl.join(', '))} · owner ${esc(personName(r.doc.owner))}</div>
+          ${r.doc.extracted.length ? `<h3>Obligations found in the text</h3><div class="hint">Extracted by the enrichment step. Nothing is active until a person confirms it.</div>${r.doc.extracted.map((e, i) => `<div class="hit row" style="justify-content:space-between"><span>${esc(e.detail)} <span class="tag">${esc(e.kind)}</span></span>${e.kind === 'time' || e.kind === 'state' ? `<button class="btn sm" data-action="draft-rule-from" data-doc="${r.doc.id}" data-i="${i}">Create draft rule</button>` : ''}</div>`).join('')}` : '<div class="hint">No dated obligations detected in this text.</div>'}
+          <div class="row"><button class="btn" data-action="kb-ask-q" data-q="When do travel expenses have to be submitted?">Test: ask about it</button><button class="btn" data-action="open-doc" data-id="${r.doc.id}">Open document</button></div>` : '<div class="hint">Running…</div>'}`
+        : `<ol class="small" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
+          <li><b>Parse</b> docx, pdf, pptx, xlsx, html, md; OCR for scans.</li>
+          <li><b>Clean and dedupe</b> boilerplate, drafts, old versions.</li>
+          <li><b>Chunk</b> by headings, 300 to 800 tokens, heading path kept as prefix.</li>
+          <li><b>Enrich</b> each chunk: type, department, systems, people, dates and obligations, glossary terms.</li>
+          <li><b>Embed</b> and <b>index</b> (vector + keyword).</li>
+          <li><b>Stamp ACLs</b> on every chunk so retrieval respects who may read what.</li>
+        </ol><div class="hint">In this prototype the same steps run in the browser with a keyword index. Obligation extraction uses patterns; in production an LLM pass does this at ingestion time.</div>`}
+      </div></div></div>`;
+  }
+  if (t === 'sources') {
+    return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Source</th><th>Kind</th><th>Documents</th><th>Default ACL</th><th>Last sync</th><th>Status</th><th></th></tr></thead><tbody>
+      ${state.sources.map(s => `<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.kind)}</td><td class="num">${state.docs.filter(d => d.source === s.id).length}</td><td class="small">${esc(s.acl)}</td><td class="nowrap mono">${esc(s.lastSync)}</td><td>${statusPill(s.status)}${s.status === 'warn' ? '<br><span class="hint">token expires in 3 days</span>' : ''}</td><td><button class="btn sm" data-action="sync-source" data-id="${s.id}">Sync now</button></td></tr>`).join('')}
+    </tbody></table></div></div></div>
+    <div class="panel"><div class="ph"><h2>Add a source</h2></div><div class="pb"><form data-form="kb-source" class="form">
+      <div class="field"><label for="src-name">Name</label><input id="src-name" name="name" required placeholder="Confluence › Sales"></div>
+      <div class="field"><label for="src-kind">Kind</label><select id="src-kind" name="kind"><option>SharePoint</option><option>Confluence</option><option>Google Drive</option><option>SMB</option><option>Jira</option><option>Mailbox</option><option>Database view</option></select></div>
+      <div class="field"><label for="src-acl">Default ACL</label><input id="src-acl" name="acl" value="all-staff"></div>
+      <div class="field" style="justify-content:flex-end"><button class="btn primary" type="submit">Register connector</button></div></form></div></div>`;
+  }
+  if (t === 'entities') {
+    const dl = state.rules.filter(r => r.type === 'time').map(r => ({ r, ts: timeStatus(r) })).sort((a, b) => a.ts.daysLeft - b.ts.daysLeft);
+    return head + `<div class="stack">
+      <div class="panel"><div class="ph"><h2>Deadlines</h2><span class="hint">structured table; each row is also a time rule</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Deadline</th><th>Rule</th><th>Due</th><th>Lead times</th><th>Owner</th><th>Status</th></tr></thead><tbody>
+        ${dl.map(({ r, ts }) => `<tr class="click" data-action="open-rule" data-id="${r.id}"><td>${esc(r.description)}</td><td class="mono small">${esc(r.id)}</td><td class="nowrap">${ts.due}</td><td class="nowrap">${ts.leads.join(' / ')} d</td><td>${esc(personName(r.owner_role))}</td><td>${statusPill(r.status)}</td></tr>`).join('')}
+      </tbody></table></div></div></div>
+      <div class="grid2">
+      <div class="panel"><div class="ph"><h2>People and roles</h2><span class="hint">routing table for alerts and approvals</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Role</th><th>Person</th><th>Channel</th><th>Backup</th></tr></thead><tbody>
+        ${PEOPLE.map(p => `<tr><td class="mono small">${esc(p.role)}</td><td>${esc(p.name)}<br><span class="hint">${esc(p.team)}</span></td><td class="mono small">${esc(p.channel)}</td><td class="mono small">${esc(p.backup)}</td></tr>`).join('')}
+      </tbody></table></div></div></div>
+      <div class="panel"><div class="ph"><h2>Systems</h2><span class="hint">from the discovery inventory</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>System</th><th>Access</th><th>Test instance</th><th>Blast radius</th><th>MCP server</th></tr></thead><tbody>
+        ${SYSTEMS.map(s => `<tr><td><b>${esc(s.name)}</b><br><span class="hint">${esc(s.type)} · ${esc(s.auth)}</span></td><td class="small">${esc(s.access)}</td><td>${esc(s.test)}</td><td>${sevPill(s.crit)}</td><td class="mono small">${esc(s.mcp)}</td></tr>`).join('')}
+      </tbody></table></div></div></div></div></div>`;
+  }
+  if (t === 'glossary') {
+    return head + `<div class="grid2"><div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Term</th><th>Meaning</th><th>Synonyms used in retrieval</th></tr></thead><tbody>
+      ${state.glossary.map(g => `<tr><td><b>${esc(g.term)}</b></td><td>${esc(g.meaning)}</td><td class="small">${g.synonyms.map(s => `<span class="tag">${esc(s)}</span>`).join(' ')}</td></tr>`).join('')}
+    </tbody></table></div></div></div>
+    <div class="panel"><div class="ph"><h2>Add a term</h2><span class="hint">company abbreviations break retrieval; teach them here</span></div><div class="pb"><form data-form="kb-glossary" class="form">
+      <div class="field"><label for="gl-term">Term</label><input id="gl-term" name="term" required placeholder="KSZ"></div>
+      <div class="field"><label for="gl-syn">Synonyms (comma separated)</label><input id="gl-syn" name="synonyms" placeholder="monthly report, management report"></div>
+      <div class="field wide"><label for="gl-mean">Meaning</label><input id="gl-mean" name="meaning" required placeholder="Monthly management summary report"></div>
+      <div class="field wide"><button class="btn primary" type="submit">Add to glossary</button></div></form></div></div></div>`;
+  }
+  if (t === 'gaps') {
+    return head + `<div class="panel"><div class="ph"><h2>Questions without an answer</h2><span class="hint">every "I don't know" lands here; owners get a document request</span></div><div class="pb tight">${state.gaps.length ? `<div class="tw"><table class="tbl"><thead><tr><th>Question</th><th>Asked</th><th>By</th><th>Last</th><th></th></tr></thead><tbody>
+      ${state.gaps.map((g, i) => `<tr><td>${esc(g.q)}</td><td class="num">${g.asked}×</td><td>${esc(g.by)}</td><td class="nowrap">${esc(g.at)}</td><td class="nowrap"><button class="btn sm" data-action="gap-request" data-i="${i}">Request document</button> <button class="btn sm" data-action="gap-dismiss" data-i="${i}">Dismiss</button></td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">No open gaps.</div>'}</div></div>`;
+  }
+  return head;
+}
+
+function ruleYaml(r) { const { stats, status, ...rest } = r; return toYaml({ ...rest, status }); }
+function viewRules() {
+  const f = state.ui.ruleFilter; const list = state.rules.filter(r => f === 'all' || r.type === f || r.status === f);
+  const r = getRule(state.ui.ruleId) || list[0];
+  return `<div class="page-h"><div><h1>Rules</h1><p>Deterministic, reviewable definitions of when the assistant must look, what counts as abnormal, who is told, and what it may do. The language model never decides these.</p></div>
+    <div class="actions"><select class="btn" id="rule-filter" data-change="rule-filter">${[['all', 'All rules'], ['threshold', 'Threshold / anomaly'], ['time', 'Time / deadline'], ['state', 'State'], ['policy', 'Policy'], ['active', 'Active'], ['shadow', 'Shadow'], ['draft', 'Draft']].map(([k, l]) => `<option value="${k}" ${f === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn primary" data-action="new-rule">New rule</button></div></div>
+  <div class="split">
+    <div class="panel"><div class="pb tight"><div class="list">${list.map(x => `<div class="item ${r && r.id === x.id ? 'sel' : ''}" data-action="open-rule" data-id="${x.id}"><span class="stripe ${x.severity || ''}"></span><div><b class="mono">${esc(x.id)}</b><span class="meta">${esc(x.description)}</span><span class="meta">${typePill(x.type)} ${statusPill(x.status)} ${x.stats ? `· fired ${x.stats.fired30}× / 30 d${x.stats.fired30 ? `, ${Math.round(100 * x.stats.dismissed / Math.max(1, x.stats.acked + x.stats.dismissed))} % dismissed` : ''}` : ''}</span></div><div></div></div>`).join('')}</div></div></div>
+    ${r ? ruleDetail(r) : '<div class="panel"><div class="empty">Select a rule.</div></div>'}
+  </div>`;
+}
+function ruleDetail(r) {
+  const sim = state.lastRuleSim && state.lastRuleSim.ruleId === r.id ? state.lastRuleSim : null;
+  const next = { draft: ['shadow', 'Start shadow mode'], shadow: ['active', 'Activate'], active: ['paused', 'Pause'], paused: ['active', 'Resume'] }[r.status];
+  const F = (label, path, type, extra = '') => { const val = path.split('.').reduce((o, k) => o == null ? o : o[k], r); return `<div class="field"><label for="rf-${path}">${label}</label>${type === 'select' ? `<select id="rf-${path}" data-rule-field="${path}">${extra.map(o => `<option ${String(val) === String(o) ? 'selected' : ''}>${o}</option>`).join('')}</select>` : `<input id="rf-${path}" type="${type}" ${extra} value="${esc(Array.isArray(val) ? val.join(', ') : val ?? '')}" data-rule-field="${path}" data-kind="${Array.isArray(val) ? 'list' : type}">`}</div>`; };
+  let form = '';
+  if (r.type === 'threshold') form = `${F('Signal', 'signal', 'select', ['search_console.clicks', 'search_console.impressions'])}${F('Pages in scope (comma separated)', 'scope_pages', 'text')}${F('Baseline window (days)', 'baseline.window_days', 'number', 'min="14" step="7"')}${F('Fire when ratio to baseline is below', 'condition.ratio_lt', 'number', 'min="0.1" max="1" step="0.05"')}${F('Consecutive days', 'condition.consecutive', 'number', 'min="1" max="7"')}${F('Ignore when baseline below', 'condition.min_baseline', 'number', 'min="0"')}${F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical'])}${F('Owner role', 'owner_role', 'select', PEOPLE.map(p => p.role))}${F('Cooldown (days)', 'cooldown_days', 'number', 'min="0"')}${F('Playbook', 'playbook', 'select', PLAYBOOKS.map(p => p.id))}`;
+  else if (r.type === 'time') form = `${r.due.date ? F('Due date', 'due.date', 'date') : F('Due day of month', 'due.day_of_month', 'number', 'min="1" max="28"')}${F('Lead times, days before due (comma separated)', 'lead_times_days', 'text')}${F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical'])}${F('Owner role', 'owner_role', 'select', PEOPLE.map(p => p.role))}${F('Requires acknowledgement', 'requires_ack', 'select', ['true', 'false'])}`;
+  else if (r.type === 'state') form = `${F('Entity', 'entity', 'select', ['orders', 'tickets'])}${F('Where status =', 'where.status', 'text')}${r.entity === 'orders' ? F('Days in status greater than', 'condition.days_in_status_gt', 'number', 'min="1"') : F('Hours open greater than', 'condition.hours_open_gt', 'number', 'min="1"')}${F('Severity', 'severity', 'select', ['low', 'medium', 'high', 'critical'])}${F('Owner role', 'owner_role', 'select', PEOPLE.map(p => p.role))}`;
+  else form = `<div class="field wide"><label>Decision table (evaluated at tool-call time by the guardrail layer)</label><div class="tw"><table class="tbl"><thead><tr><th>When</th><th>Decision</th><th>Approver</th></tr></thead><tbody>${r.decisions.map(d => `<tr><td class="mono small">${esc(d.when)}</td><td>${d.allow === 'auto' ? '<span class="pill ok">auto</span>' : d.allow === 'approve' ? '<span class="pill warn">approve</span>' : '<span class="pill crit">forbid</span>'}</td><td class="mono small">${esc(d.approver_role || '–')}</td></tr>`).join('')}</tbody></table></div></div>`;
+  return `<div class="panel"><div class="ph"><div><h2 class="mono">${esc(r.id)}</h2><span class="hint">${typePill(r.type)} ${statusPill(r.status)} · owner ${esc(r.owner)} · review ${esc(r.review_date || '–')}</span></div>
+      <div class="row">${next ? `<button class="btn sm" data-action="rule-status" data-id="${r.id}" data-to="${next[0]}">${next[1]}</button>` : ''}${r.type !== 'policy' ? `<button class="btn sm primary" data-action="simulate-rule" data-id="${r.id}">Simulate on history</button>` : `<button class="btn sm primary" data-action="nav" data-view="tools" data-tool="${esc(r.tool.replace('.*', '.remove_noindex'))}">Test with a tool call</button>`}<button class="btn sm danger" data-action="delete-rule" data-id="${r.id}">Delete</button></div></div>
+    <div class="pb stack">
+      <div class="field wide"><label for="rf-description">Description</label><input id="rf-description" data-rule-field="description" data-kind="text" value="${esc(r.description)}"></div>
+      <div class="form">${form}</div>
+      ${r.stats ? `<div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"><div class="tile"><span class="lab">Fired / 30 d</span><span class="val">${r.stats.fired30}</span></div><div class="tile"><span class="lab">Acknowledged</span><span class="val">${r.stats.acked}</span></div><div class="tile ${r.stats.dismissed > r.stats.acked ? 'warn' : ''}"><span class="lab">Dismissed as noise</span><span class="val">${r.stats.dismissed}</span><span class="sub">${r.stats.dismissed > r.stats.acked && r.stats.fired30 ? 'tune the threshold' : ''}</span></div></div>` : ''}
+      ${sim ? simPanel(r, sim) : ''}
+      <details><summary class="small" style="cursor:pointer">Rule as stored in git (YAML)</summary><pre class="yaml" id="yaml-preview">${esc(ruleYaml(r))}</pre></details>
+      <div class="hint">Changes save on blur. Lifecycle: draft → shadow (evaluates and logs, never notifies) → active → paused. Shadow for one to two weeks before activating.</div>
+    </div></div>`;
+}
+function simPanel(r, sim) {
+  if (r.type === 'threshold') {
+    const page = sim.page; const ev = sim.byPage[page];
+    return `<div class="panel" style="background:var(--bg)"><div class="ph"><h3>Simulation on the last 42 days</h3><select class="btn sm" id="sim-page" data-change="sim-page" data-id="${r.id}">${r.scope_pages.map(p => `<option ${p === page ? 'selected' : ''}>${p}</option>`).join('')}</select></div><div class="pb stack">
+      ${chartSVG(ev.points, `${r.signal} on ${page}`)}
+      <div class="tw"><table class="tbl"><thead><tr><th>Page</th><th>Firings</th><th>Dates</th><th>Today</th></tr></thead><tbody>${r.scope_pages.map(p => { const e = sim.byPage[p]; const l = e.points[e.points.length - 1]; return `<tr><td class="mono">${esc(p)}</td><td class="num">${e.firings.length}</td><td class="small">${e.firings.map(f => `${f.date} (${pct(f.ratio)})`).join(', ') || '–'}</td><td>${l.fired ? '<span class="pill crit">firing</span>' : l.breach ? '<span class="pill warn">breach, not yet consecutive</span>' : '<span class="pill ok">normal</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+      <div class="hint">Change the threshold or the consecutive-day count above and simulate again to see how many alerts the rule would have produced. Fewer than one firing per week per page is a good first target.</div></div></div>`;
+  }
+  if (r.type === 'time') {
+    const ts = sim.ts; const days = [...ts.leads.map(l => ({ d: -l, l: `reminder (${l} d before)` })), { d: 0, l: 'due' }];
+    return `<div class="panel" style="background:var(--bg)"><div class="ph"><h3>Timeline</h3></div><div class="pb stack">
+      ${kv({ 'next due date': ts.due, 'days left': ts.daysLeft, phase: ts.phase === 'overdue' ? '<span class="pill crit">overdue</span>' : ts.phase === 'reminding' ? '<span class="pill warn">inside reminder window</span>' : '<span class="pill ok">upcoming</span>', 'next reminder': ts.nextReminderIn == null ? 'none left' : `in ${ts.nextReminderIn} days` })}
+      <div class="tw"><table class="tbl"><thead><tr><th>Date</th><th>Event</th><th>Status</th></tr></thead><tbody>${days.map(x => { const dd = fmtDate(addDays(parseDate(ts.due), x.d)); const past = parseDate(dd) <= today; return `<tr><td class="nowrap mono">${dd}</td><td>${esc(x.l)}</td><td>${past ? '<span class="pill warn">already due</span>' : '<span class="pill">scheduled</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+      <div class="hint">A task is created at the first reminder and stays open until acknowledged; escalation goes to ${esc((r.escalation || []).map(e => e.notify_role).join(', ') || 'nobody')}.</div></div></div>`;
+  }
+  return `<div class="panel" style="background:var(--bg)"><div class="ph"><h3>Records matching right now</h3></div><div class="pb">${sim.records.length ? json(sim.records) : '<div class="hint">No record matches.</div>'}</div></div>`;
+}
+
+function viewTriggers() {
+  const t = state.ui.trigTab; const T = state.triggers;
+  const head = `<div class="page-h"><div><h1>Triggers</h1><p>What sets the assistant in motion: schedules, events pushed by systems, and pollers for systems that cannot push. Every firing is persisted so a run can be replayed.</p></div></div>
+  ${tabs([['schedules', 'Schedules'], ['webhooks', 'Webhooks'], ['pollers', 'Pollers'], ['log', `Event log (${state.events.length})`]], t, 'trig-tab')}`;
+  if (t === 'schedules') return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Schedule</th><th>Cron</th><th>Collects</th><th>Evaluates rules</th><th>Last run</th><th>Next</th><th></th></tr></thead><tbody>
+    ${T.schedules.map(s => `<tr><td><b>${esc(s.name)}</b><br>${statusPill(s.status)}</td><td class="mono small nowrap">${esc(s.cron)}<br><span class="hint">${esc(s.human)}</span></td><td class="small">${s.runs.map(x => `<span class="tag">${esc(x)}</span>`).join(' ') || '–'}</td><td class="small">${s.rules.map(x => `<a href="#rules" data-action="open-rule" data-id="${x}" class="mono">${esc(x)}</a>`).join(', ') || '–'}</td><td class="nowrap mono small">${esc(s.lastRun)}</td><td class="nowrap mono small">${esc(s.next)}</td><td><button class="btn sm" data-action="run-schedule" data-id="${s.id}">Run now</button></td></tr>`).join('')}
+  </tbody></table></div></div></div>
+  <div class="panel"><div class="ph"><h2>Add a schedule</h2></div><div class="pb"><form data-form="add-schedule" class="form">
+    <div class="field"><label for="sc-name">Name</label><input id="sc-name" name="name" required placeholder="Weekly stock check"></div>
+    <div class="field"><label for="sc-cron">Cron (5 fields)</label><input id="sc-cron" name="cron" class="mono" value="0 6 * * 1"></div>
+    <div class="field"><label for="sc-rules">Rules to evaluate</label><select id="sc-rules" name="rules" multiple size="3">${state.rules.filter(r => r.type !== 'policy').map(r => `<option>${r.id}</option>`).join('')}</select></div>
+    <div class="field" style="justify-content:flex-end"><button class="btn primary" type="submit">Create schedule</button></div></form></div></div>`;
+  if (t === 'webhooks') return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Event</th><th>Endpoint</th><th>Source</th><th>Last received</th><th>30 d</th><th>Handled by</th><th></th></tr></thead><tbody>
+    ${T.webhooks.map(w => `<tr><td class="mono"><b>${esc(w.event)}</b></td><td class="mono small">${esc(w.path)}</td><td>${esc(w.source)}</td><td class="nowrap mono small">${esc(w.last)}</td><td class="num">${w.count30}</td><td class="small">${esc(w.handles)}</td><td><button class="btn sm" data-action="test-webhook" data-id="${w.id}">Send test event</button></td></tr>`).join('')}
+  </tbody></table></div></div></div>
+  <div class="hint">Webhook deliveries are signed by the source system and verified before they enter the event bus. A test event goes through the same path with a <code>test: true</code> flag.</div>`;
+  if (t === 'pollers') return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Poller</th><th>Tool</th><th>Every</th><th>Last poll</th><th>Feeds rules</th><th>Status</th><th></th></tr></thead><tbody>
+    ${T.pollers.map(p => `<tr><td><b>${esc(p.name)}</b></td><td class="mono small">${esc(p.tool)}</td><td>${esc(p.every)}</td><td class="nowrap mono small">${esc(p.last)}</td><td class="small">${p.rules.map(x => `<a href="#rules" data-action="open-rule" data-id="${x}" class="mono">${esc(x)}</a>`).join(', ') || '–'}</td><td>${statusPill(p.status)}</td><td><button class="btn sm" data-action="run-poller" data-id="${p.id}">Poll now</button></td></tr>`).join('')}
+  </tbody></table></div></div></div>
+  <div class="hint">A poller reads through a read-only tool, diffs the result against the last snapshot and emits change events. Pollers are the fallback for systems without webhooks.</div>`;
+  return head + `<div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>When</th><th>Kind</th><th>What</th><th>Detail</th></tr></thead><tbody>
+    ${state.events.map(e => `<tr><td class="nowrap mono">${esc(e.at)}</td><td><span class="tag">${esc(e.kind)}</span></td><td>${esc(e.what)}</td><td class="muted">${esc(e.detail)}</td></tr>`).join('')}
+  </tbody></table></div></div></div>`;
+}
+
+function viewTools() {
+  const t = TOOLS.find(x => x.name === state.ui.toolName) || TOOLS[0]; const res = state.toolResult && state.toolResult.tool === t.name ? state.toolResult : null;
+  const input = p => { const id = `tp-${p.n}`; if (p.t === 'select') return `<select id="${id}" name="${p.n}">${p.opts.map(o => `<option value="${esc(o)}">${esc(o || '(any)')}</option>`).join('')}</select>`; if (p.t === 'bool') return `<select id="${id}" name="${p.n}"><option value="true" ${p.d === true ? 'selected' : ''}>true</option><option value="false" ${p.d === false ? 'selected' : ''}>false</option></select>`; return `<input id="${id}" name="${p.n}" type="${p.t === 'number' ? 'number' : 'text'}" value="${esc(p.d ?? '')}" ${p.req ? 'required' : ''}>`; };
+  return `<div class="page-h"><div><h1>Tools</h1><p>The only way the assistant touches company systems. One MCP server per system, a few business-level functions each. Every call passes schema validation, the policy rules and the audit log.</p></div></div>
+  <div class="split">
+    <div class="panel"><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>Tool</th><th>Class</th><th>Risk</th><th>Health</th></tr></thead><tbody>
+      ${TOOLS.map(x => `<tr class="click ${x.name === t.name ? 'sel' : ''}" data-action="open-tool" data-name="${x.name}"><td><b class="mono">${esc(x.name)}</b><br><span class="hint">${esc(x.server)}</span></td><td><span class="tag">${esc(x.cls)}</span></td><td>${x.risk === 'high' ? '<span class="pill crit">high</span>' : x.risk === 'medium' ? '<span class="pill warn">medium</span>' : '<span class="pill">low</span>'}</td><td>${statusPill(x.health)}<br><span class="hint">${esc(x.last)}</span></td></tr>`).join('')}
+    </tbody></table></div></div></div>
+    <div class="panel"><div class="ph"><div><h2 class="mono">${esc(t.name)}</h2><span class="hint">${esc(t.server)} · ${esc(t.cls)} · risk ${esc(t.risk)}</span></div></div><div class="pb stack">
+      <p class="small">${esc(t.desc)}</p>
+      <form data-form="tool-run" data-tool="${t.name}" class="stack"><div class="form">${t.params.map(p => `<div class="field"><label for="tp-${p.n}">${esc(p.n)}${p.req ? ' *' : ''}</label>${input(p)}</div>`).join('')}</div>
+        <div class="row"><button class="btn" type="submit" name="mode" value="dry">Run as dry run</button><button class="btn primary" type="submit" name="mode" value="live">Run ${t.cls === 'write' || t.cls === 'communicate' ? 'live (through policy)' : ''}</button><span class="hint">Policy is evaluated before every call. A live write that needs approval produces an approval card instead of executing.</span></div></form>
+      ${res ? `<div class="msg"><div class="from">Decision</div>${res.decision.allow === 'auto' ? '<span class="pill ok">auto</span>' : res.decision.allow === 'approve' ? '<span class="pill warn">approval required</span>' : '<span class="pill crit">forbidden</span>'} <span class="small">${esc(res.decision.rule)}: ${esc(res.decision.why)}</span>${res.approval ? `<div class="small" style="margin-top:6px">Approval <code>${res.approval.id}</code> sent to ${esc(personName(res.approval.approver))}. <a href="#approvals" data-action="nav" data-view="approvals">Open approvals</a></div>` : ''}</div>
+        ${res.result || res.dry ? `<div><div class="hint" style="margin-bottom:4px">${res.dry ? 'Dry-run result' : 'Result'} · ${res.ms} ms · logged to audit</div>${json(res.result || res.dry)}</div>` : ''}` : ''}
+      <details><summary class="small" style="cursor:pointer">Tool spec (what the model reads)</summary><pre class="yaml">${esc(toYaml({ name: t.name, server: t.server, class: t.cls, risk: t.risk, description: t.desc, input_schema: Object.fromEntries(t.params.map(p => [p.n, { type: p.t === 'bool' ? 'boolean' : p.t === 'number' ? 'integer' : 'string', required: !!p.req, enum: p.opts, default: p.d }])), auth: { mode: 'service_account', credential_ref: 'vault://' + t.server }, observability: { log_arguments: true } }))}</pre></details>
+    </div></div></div>`;
+}
+
+function viewPlaybooks() {
+  const p = PLAYBOOKS.find(x => x.id === state.ui.playbookId) || PLAYBOOKS[0];
+  return `<div class="page-h"><div><h1>Playbooks</h1><p>Versioned procedures the agent follows for known tasks. They say which tools may be used, where a human decides, and what "done" means. They are the procedural memory of the assistant.</p></div></div>
+  <div class="split"><div class="panel"><div class="pb tight"><div class="list">${PLAYBOOKS.map(x => `<div class="item ${x.id === p.id ? 'sel' : ''}" data-action="open-playbook" data-id="${x.id}"><span class="stripe"></span><div><b>${esc(x.title)}</b><span class="meta">${esc(x.id)} · owner ${esc(x.owner)} · autonomy level ${x.autonomy}</span></div><div></div></div>`).join('')}</div></div></div>
+  <div class="panel"><div class="ph"><div><h2>${esc(p.title)}</h2><span class="hint">triggered by ${p.triggeredBy.map(x => `<code>${esc(x)}</code>`).join(', ')}</span></div><button class="btn sm" data-action="nav" data-view="lab">Run in test lab</button></div><div class="pb stack">
+    ${kv({ 'autonomy level': `${p.autonomy} – ${['observe', 'suggest', 'execute after approval', 'auto with report', 'auto'][p.autonomy]}`, 'done when': esc(p.done) })}
+    <h3>Steps</h3><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${p.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    <div class="hint">Promotion to the next autonomy level needs 20 approvals without correction in 30 days; any correction demotes the pair (playbook, tool) one level automatically.</div>
+  </div></div></div>`;
+}
+
+function viewLab() {
+  const t = state.ui.labTab; const sc = state.scenario;
+  const head = `<div class="page-h"><div><h1>Test lab</h1><p>Exercise the whole chain without touching real systems: inject a signal, watch the rules fire, read the agent's trace, approve or reject its proposal, and check the knowledge base against the golden question set.</p></div></div>
+  ${tabs([['scenario', 'Scenario runner'], ['chat', 'Talk to the assistant'], ['evals', 'Golden questions']], t, 'lab-tab')}`;
+  if (t === 'scenario') {
+    const task = state.tasks.find(x => x.page === sc.page && x.status !== 'done' && x.type === 'threshold') || state.tasks.find(x => x.page === sc.page && x.type === 'threshold' && x.trace);
+    const rule = getRule('seo-organic-drop'); const ev = evalThreshold(rule, state.metrics[sc.page], 'clicks');
+    const ap = task && task.trace && task.trace.approvalId ? state.approvals.find(a => a.id === task.trace.approvalId) : null;
+    return head + `<div class="grid2">
+      <div class="panel"><div class="ph"><h2>1 · Inject a signal</h2>${sc.applied ? '<span class="pill warn">scenario active</span>' : '<span class="pill">baseline data</span>'}</div><div class="pb"><form data-form="scenario" class="form">
+        <div class="field"><label for="sc-page">Key page</label><select id="sc-page" name="page">${KEY_PAGES.map(p => `<option ${p === sc.page ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
+        <div class="field"><label for="sc-cause">Hidden cause (what the agent should find)</label><select id="sc-cause" name="cause">${[['noindex', 'noindex tag added by a CMS deployment'], ['title', 'title and meta replaced (CTR drop)'], ['server', 'server returns 503 errors'], ['unknown', 'nothing on our side (algorithm / seasonality)']].map(([k, l]) => `<option value="${k}" ${k === sc.cause ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label for="sc-drop">Drop in clicks: <output id="sc-drop-out">${sc.drop}</output> %</label><div class="range"><input id="sc-drop" name="drop" type="range" min="5" max="90" step="5" value="${sc.drop}" data-input="range-out" data-out="sc-drop-out"></div></div>
+        <div class="field"><label for="sc-days">Days it has lasted</label><input id="sc-days" name="days" type="number" min="1" max="10" value="${sc.days}"></div>
+        <div class="field wide row"><button class="btn primary" type="submit">Apply scenario and run the daily collection</button><button class="btn" type="button" data-action="reset-scenario">Reset metrics</button></div></form></div></div>
+      <div class="panel"><div class="ph"><h2>2 · Rule evaluation</h2><span class="hint">seo-organic-drop on ${esc(sc.page)}</span></div><div class="pb stack">
+        ${chartSVG(ev.points.slice(-35), 'clicks on ' + sc.page)}
+        ${state.lastEval ? `<div class="tw"><table class="tbl"><thead><tr><th>Rule</th><th>Page</th><th>Ratio</th><th>Result</th></tr></thead><tbody>${state.lastEval.filter(x => x.page === sc.page || x.fired).map(x => `<tr><td class="mono small">${esc(x.rule.id)}<br>${statusPill(x.rule.status)}</td><td class="mono small">${esc(x.page)}</td><td class="num">${pct(x.ratio)}</td><td>${x.fired ? (x.rule.status === 'active' ? '<span class="pill crit">fired → task</span>' : '<span class="pill info">would fire (shadow)</span>') : '<span class="pill ok">normal</span>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">Apply a scenario to evaluate the threshold rules against it. The chart shows the signal, its same-weekday median baseline and the threshold line.</div>'}
+      </div></div>
+    </div>
+    ${task ? `<div class="panel"><div class="ph"><div><h2>3 · Agent run · ${esc(task.id)}</h2><span class="hint">playbook ${esc(rule.playbook)} · ${esc(task.trace ? task.trace.builtAt : '')}</span></div><div class="row">${sevPill(task.severity)}<span class="pill ${task.status === 'done' ? 'ok' : task.status === 'acked' ? 'info' : 'warn'}">${task.status}</span></div></div><div class="pb"><div class="grid2">
+      <div class="stack"><h3>Trace</h3><div class="trace">${(task.trace ? task.trace.steps : []).map((s, i) => `<div class="step"><span class="n ${s.act ? 'act' : 'ok'}">${i + 1}</span><div><div class="call">${esc(s.call)}</div><div class="res">${esc(s.res)}</div><div class="note">${esc(s.note)}</div></div></div>`).join('')}</div></div>
+      <div class="stack"><h3>Alert the owner receives</h3><div class="msg"><div class="from">Slack · ${esc(PEOPLE.find(p => p.role === task.owner)?.channel || '#marketing')}</div><pre style="font-family:var(--font-ui);font-size:13px">${esc(task.trace ? task.trace.alert : '')}</pre></div>
+        <h3>Proposed action</h3>${ap ? approvalCard(ap) : task.trace && task.trace.ticket ? `<div class="msg"><div class="from">Executed (policy: auto)</div>Ticket <b>${esc(task.trace.ticket)}</b> created and linked to the task.</div>` : ''}
+        <div class="row">${task.status === 'open' ? `<button class="btn" data-action="ack-task" data-id="${task.id}">Acknowledge task</button>` : ''}<button class="btn" data-action="nav" data-view="approvals">Open audit log</button></div></div>
+    </div></div></div>` : ''}`;
+  }
+  if (t === 'chat') return head + `<div class="panel"><div class="chat" id="chat">${state.chat.map(m => `<div class="bub ${m.who === 'me' ? 'me' : ''}">${m.who === 'me' ? esc(m.text) : m.html}</div>`).join('')}</div>
+    <div style="padding:0 14px 10px" class="chips">${['When is the VAT return due?', 'What deadlines are coming up?', 'Who owns the pricing page?', 'What happens to an order awaiting payment for 10 days?', 'Run the SEO drop scenario', 'What is open or pending?', 'What is the mileage rate?'].map(q => `<button type="button" class="chip" data-action="chat-q" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <form data-form="chat" class="chat-in"><input id="chat-in" name="q" placeholder="Ask the assistant…" autocomplete="off"><button class="btn primary" type="submit">Send</button></form></div>
+    <div class="hint">The prototype routes questions by intent: deadlines and owners come from the entity store, document questions from the knowledge index with a citation, and "run the scenario" drives the test lab. Unanswerable questions are logged as gaps.</div>`;
+  const ev = state.evalRun;
+  return head + `<div class="panel"><div class="ph"><div><h2>Golden question set</h2><span class="hint">${GOLDEN.length} questions with an expected source document. Run after every change to the index, the glossary or the retrieval settings.</span></div><button class="btn primary" data-action="run-evals">Run evaluation</button></div><div class="pb tight">
+    ${ev ? `<div style="padding:12px 14px" class="row"><span class="pill ${ev.pass === GOLDEN.length ? 'ok' : ev.pass >= GOLDEN.length * 0.85 ? 'warn' : 'crit'}">${ev.pass}/${GOLDEN.length} correct source · ${Math.round(100 * ev.pass / GOLDEN.length)} %</span><span class="hint">target ≥ 90 % · ran ${esc(ev.at)}</span></div>
+    <div class="tw"><table class="tbl"><thead><tr><th>Question</th><th>Expected document</th><th>Top hit</th><th>Score</th><th>Result</th></tr></thead><tbody>${ev.rows.map(r => `<tr><td>${esc(r.q)}</td><td class="small">${esc(r.expected)}</td><td class="small">${esc(r.got || '–')}<br><span class="hint">${esc(r.section || '')}</span></td><td class="num">${r.score == null ? '–' : r.score.toFixed(2)}</td><td>${r.pass ? '<span class="pill ok">pass</span>' : '<span class="pill crit">fail</span>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Not run yet.</div>'}</div></div>`;
+}
+
+function approvalCard(a) {
+  const dec = policyDecision(a.tool, a.args);
+  return `<div class="appr ${a.status === 'approved' ? 'done' : a.status === 'rejected' ? 'rej' : ''}"><div class="row" style="justify-content:space-between"><b class="mono">${esc(a.tool)}</b><span class="pill ${a.status === 'pending' ? 'warn' : a.status === 'approved' ? 'ok' : 'crit'}">${esc(a.status)}</span></div>
+    <div class="small">Arguments: <code>${esc(JSON.stringify(a.args))}</code></div>
+    <div class="small">Dry run: ${esc(a.dryRun)}</div>
+    <div class="hint">Requested by ${esc(a.requestedBy)} at ${esc(a.at)} · policy ${esc(a.rule)}: ${esc(dec.why)} · approver ${esc(personName(a.approver))}${a.taskId ? ` · task ${esc(a.taskId)}` : ''}</div>
+    ${a.status === 'pending' ? `<div class="row"><button class="btn primary sm" data-action="approve" data-id="${a.id}">Approve and execute</button><button class="btn sm danger" data-action="reject" data-id="${a.id}">Reject</button></div>` : a.result ? `<div class="small">Result: <code>${esc(JSON.stringify(a.result))}</code></div>` : ''}</div>`;
+}
+function viewApprovals() {
+  const pend = state.approvals.filter(a => a.status === 'pending'), hist = state.approvals.filter(a => a.status !== 'pending');
+  return `<div class="page-h"><div><h1>Approvals & audit</h1><p>Actions the policy rules routed to a person, and the append-only record of everything the assistant did: rule firings, tool calls, approvals, messages.</p></div></div>
+  <div class="grid2"><div class="stack"><h2>Waiting for a decision (${pend.length})</h2>${pend.length ? pend.map(approvalCard).join('') : '<div class="panel"><div class="empty">Nothing waiting. Run a write tool from Tools or apply a scenario in the test lab.</div></div>'}
+  ${hist.length ? `<h2>Decided</h2>${hist.map(approvalCard).join('')}` : ''}</div>
+  <div class="panel"><div class="ph"><h2>Audit log</h2><span class="hint">${state.audit.length} entries</span></div><div class="pb tight"><div class="tw"><table class="tbl"><thead><tr><th>When</th><th>Actor</th><th>Kind</th><th>Detail</th></tr></thead><tbody>
+    ${state.audit.map(e => `<tr><td class="nowrap mono">${esc(e.at)}</td><td class="mono small">${esc(e.actor)}</td><td><span class="tag">${esc(e.kind)}</span></td><td class="small">${esc(e.detail)}</td></tr>`).join('')}
+  </tbody></table></div></div></div></div>`;
+}
+
+const VIEWS = { overview: viewOverview, kb: viewKB, rules: viewRules, triggers: viewTriggers, tools: viewTools, playbooks: viewPlaybooks, lab: viewLab, approvals: viewApprovals };
+function render() {
+  renderNav();
+  $('#main').innerHTML = (VIEWS[state.ui.view] || viewOverview)();
+  const c = $('#chat'); if (c) c.scrollTop = c.scrollHeight;
+  save();
+}
+
+// ---------- actions
+const A = {
+  nav(d) { state.ui.view = d.view; if (d.tool) state.ui.toolName = d.tool; try { history.replaceState(null, '', '#' + d.view); } catch (e) { } render(); window.scrollTo(0, 0); },
+  'reset-demo'() { try { localStorage.removeItem(LS_KEY); } catch (e) { } state = initialState(); render(); toast('Demo data reset'); },
+  'kb-tab'(d) { state.ui.kbTab = d.tab; render(); },
+  'trig-tab'(d) { state.ui.trigTab = d.tab; render(); },
+  'lab-tab'(d) { state.ui.labTab = d.tab; render(); },
+  'open-doc'(d) { state.ui.view = 'kb'; state.ui.kbTab = 'documents'; state.ui.docId = d.id; render(); },
+  'kb-ask-q'(d) { state.ui.view = 'kb'; state.ui.kbTab = 'ask'; doSearch(d.q, ''); },
+  'kb-ask-doc'(d) { const doc = state.docs.find(x => x.id === d.id); state.ui.kbTab = 'ask'; doSearch(doc.title, ''); },
+  'sync-source'(d) { const s = state.sources.find(x => x.id === d.id); s.lastSync = nowStr(); s.status = 'ok'; addEvent('sync', `${s.name} synced`, `${state.docs.filter(x => x.source === s.id).length} documents checked, 0 changed`); audit('console user', 'kb.sync', s.name); render(); toast(`${s.name} synced`); },
+  'gap-request'(d) { const g = state.gaps[d.i]; audit('console user', 'kb.document_request', `asked ${g.by} owner to document: "${g.q}"`); addEvent('kb', 'Document requested', g.q); state.gaps.splice(d.i, 1); render(); toast('Document request sent to the owner'); },
+  'gap-dismiss'(d) { state.gaps.splice(d.i, 1); render(); },
+  'draft-rule-from'(d) { const doc = state.docs.find(x => x.id === d.doc); const e = doc.extracted[d.i]; const id = `${doc.id}-${e.kind}-${d.i}`; if (!getRule(id)) { const base = { id, status: 'draft', owner: doc.dept, owner_role: doc.owner, severity: 'medium', review_date: dayStr(365), description: `${e.detail} (from "${doc.title}")`, source_document: doc.id, stats: { fired30: 0, acked: 0, dismissed: 0 } }; state.rules.push(e.kind === 'time' ? { ...base, type: 'time', due: e.due, lead_times_days: [7, 2], requires_ack: true, playbook: null, context_tools: ['kb.get_document'], escalation: [] } : { ...base, type: 'state', entity: 'orders', where: { status: 'awaiting_payment' }, condition: e.unit === 'hours' ? { hours_open_gt: e.n } : { days_in_status_gt: e.n }, playbook: null, allowed_actions: ['slack.post_message'], escalation: [] }); audit('console user', 'rule.drafted', `${id} drafted from ${doc.id}`); } state.ui.view = 'rules'; state.ui.ruleId = id; state.ui.ruleFilter = 'all'; render(); toast('Draft rule created. Review it, then start shadow mode.'); },
+  'open-rule'(d) { state.ui.view = 'rules'; state.ui.ruleId = d.id; const r = getRule(d.id); if (r && state.ui.ruleFilter !== 'all' && state.ui.ruleFilter !== r.type && state.ui.ruleFilter !== r.status) state.ui.ruleFilter = 'all'; render(); },
+  'new-rule'() { const id = 'new-rule-' + (state.rules.filter(r => r.id.startsWith('new-rule')).length + 1); state.rules.unshift({ id, type: 'threshold', status: 'draft', owner: 'marketing', owner_role: 'seo_owner', severity: 'medium', review_date: dayStr(365), description: 'Describe what this rule watches.', signal: 'search_console.clicks', scope_pages: [...KEY_PAGES], baseline: { method: 'same_weekday_median', window_days: 28 }, condition: { ratio_lt: 0.7, consecutive: 2, min_baseline: 20 }, cooldown_days: 3, playbook: 'seo-drop-triage', allowed_actions: ['slack.post_message'], escalation: [], stats: { fired30: 0, acked: 0, dismissed: 0 } }); state.ui.ruleId = id; state.ui.ruleFilter = 'all'; audit('console user', 'rule.created', id); render(); },
+  'rule-status'(d) { const r = getRule(d.id); const from = r.status; r.status = d.to; audit('console user', 'rule.status', `${r.id}: ${from} → ${d.to}`); addEvent('rule', `${r.id} ${d.to}`, `status changed by console user`); render(); toast(`${r.id} is now ${d.to}`); },
+  'delete-rule'(d) { state.rules = state.rules.filter(r => r.id !== d.id); audit('console user', 'rule.deleted', d.id); state.ui.ruleId = state.rules[0] && state.rules[0].id; render(); toast('Rule deleted'); },
+  'simulate-rule'(d) { const r = getRule(d.id); if (r.type === 'threshold') { const byPage = {}; for (const p of r.scope_pages) if (state.metrics[p]) byPage[p] = evalThreshold(r, state.metrics[p], thresholdField(r)); state.lastRuleSim = { ruleId: r.id, page: r.scope_pages.find(p => state.metrics[p]), byPage }; } else if (r.type === 'time') state.lastRuleSim = { ruleId: r.id, ts: timeStatus(r) }; else state.lastRuleSim = { ruleId: r.id, records: evalState(r) }; audit('console user', 'rule.simulated', r.id); render(); },
+  'run-schedule'(d) { const s = state.triggers.schedules.find(x => x.id === d.id); const res = evaluateRules(s.rules, s.name); s.lastRun = nowStr(); if (s.id === 'kb-reconcile') { s.status = 'ok'; addEvent('schedule', 'kb-reconcile ran', 'all sources checked; 0 changed'); } render(); toast(`${s.name}: ${res.filter(x => x.fired).length} condition(s) met`); },
+  'run-poller'(d) { const p = state.triggers.pollers.find(x => x.id === d.id); p.last = nowStr(); const res = evaluateRules(p.rules, p.name); addEvent('poller', `${p.name} polled`, `${p.tool}: snapshot diffed`); render(); toast(`${p.name} polled: ${res.filter(x => x.fired).length} condition(s) met`); },
+  'test-webhook'(d) { const w = state.triggers.webhooks.find(x => x.id === d.id); w.last = nowStr(); w.count30++; if (w.id === 'cms-deployment') { state.deploys.unshift({ system: 'cms', at: nowStr(), by: 'console test', note: 'Test deployment (webhook test)' }); addEvent('webhook', 'cms.deployment (test)', 'page diff queued for 4 key pages'); } else if (w.id === 'jira-issue-created') addEvent('webhook', 'ticketing.issue_created (test)', 'SLA timer started; rule ticket-first-response-sla is in draft, nothing sent'); else addEvent('webhook', 'erp.invoice_posted (test)', 'reminder check scheduled for +7 days'); audit('console user', 'webhook.test', w.event); render(); toast(`Test event ${w.event} delivered`); },
+  'open-tool'(d) { state.ui.toolName = d.name; state.toolResult = null; render(); },
+  'open-playbook'(d) { state.ui.playbookId = d.id; render(); },
+  'open-task'(d) { const t = state.tasks.find(x => x.id === d.id); if (t.type === 'threshold') { state.scenario.page = t.page; state.ui.view = 'lab'; state.ui.labTab = 'scenario'; if (!t.trace) buildTrace(t); } else { state.ui.view = 'rules'; state.ui.ruleId = t.ruleId; } render(); },
+  'ack-task'(d) { const t = state.tasks.find(x => x.id === d.id); t.status = 'acked'; audit('console user', 'task.acked', t.id); render(); toast('Task acknowledged'); },
+  'reset-scenario'() { resetScenario(); render(); toast('Metrics restored'); },
+  'chat-q'(d) { doChat(d.q); },
+  approve(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'approved'; a.decidedAt = nowStr(); a.result = runTool(a.tool, { ...a.args, dry_run: false }); audit('console user', 'approval.approved', `${a.id} ${a.tool} → executed`); addEvent('approval', `${a.tool} approved`, `executed by the assistant after approval`); if (a.taskId) { const t = state.tasks.find(x => x.id === a.taskId); if (t) { t.status = 'done'; audit('agent:monitoring', 'task.done', `${t.id} resolved by ${a.tool}`); } } render(); toast('Approved and executed'); },
+  reject(d) { const a = state.approvals.find(x => x.id === d.id); a.status = 'rejected'; a.decidedAt = nowStr(); audit('console user', 'approval.rejected', `${a.id} ${a.tool}`); addEvent('approval', `${a.tool} rejected`, 'the agent will record the correction and lower autonomy for this action'); render(); toast('Rejected. The correction is recorded for the learning loop.'); },
+  'run-evals'() { const rows = GOLDEN.map(g => { const h = kbSearch(g.q)[0]; const expected = state.docs.find(d => d.id === g.doc); return { q: g.q, expected: expected ? expected.title : g.doc, got: h && h.doc.title, section: h && h.chunk.heading, score: h && h.score, pass: !!h && h.doc.id === g.doc }; }); state.evalRun = { rows, pass: rows.filter(r => r.pass).length, at: nowStr() }; audit('console user', 'eval.run', `golden set: ${state.evalRun.pass}/${GOLDEN.length}`); render(); },
+};
+function doSearch(q, dept) { state.kbQuery = q; const terms = expandQuery(q); const hits = kbSearch(q, { department: dept || undefined }); state.kbResults = { hits, terms, department: dept }; if (!hits.length && q.trim() && !state.gaps.some(g => g.q === q)) state.gaps.unshift({ q, asked: 1, by: 'console user', at: TODAY }); audit('console user', 'kb.search', `"${q}" → ${hits.length} hits`); render(); }
+function doChat(q) { state.ui.view = 'lab'; state.ui.labTab = 'chat'; state.chat.push({ who: 'me', text: q }); state.chat.push({ who: 'assistant', html: chatAnswer(q) }); render(); }
+
+const FORMS = {
+  'kb-ask'(fd) { doSearch(fd.get('q') || '', fd.get('department') || ''); },
+  'kb-add'(fd, form) {
+    const file = fd.get('file');
+    const go = text => {
+      const chunks = chunkText(text); if (!chunks.length) { toast('Add some content first'); return; }
+      const id = (fd.get('title') || 'doc').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Math.random().toString(36).slice(2, 5);
+      const doc = { id, title: fd.get('title'), type: fd.get('type'), dept: fd.get('dept'), source: 'manual', updated: TODAY, owner: fd.get('owner'), acl: String(fd.get('acl') || 'all-staff').split(',').map(s => s.trim()).filter(Boolean), reviewEvery: 365, url: fd.get('url') || null,
+        chunks: chunks.map((c, i) => ({ heading: (c.match(/^#+\s*(.+)$/m) || [])[1] || `${fd.get('title')} › part ${i + 1}`, text: c.replace(/^#+\s*.+$/m, '').trim() })), extracted: extractObligations(text) };
+      state.addResult = { stage: 0, doc }; render();
+      const tick = () => { state.addResult.stage++; if (state.addResult.stage >= 7) { state.docs.push(doc); const src = state.sources.find(s => s.id === 'manual'); src.lastSync = nowStr(); addEvent('kb', 'Document indexed', `${doc.title} (${doc.chunks.length} chunks, ${doc.extracted.length} obligations found)`); audit('console user', 'kb.ingest', `${doc.id}: ${doc.chunks.length} chunks, ACL ${doc.acl.join(',')}`); render(); toast(`${doc.title} is now searchable`); } else { render(); setTimeout(tick, 260); } };
+      setTimeout(tick, 200);
+    };
+    if (file && file.size) { const fr = new FileReader(); fr.onload = () => go(String(fr.result)); fr.readAsText(file); } else go(fd.get('text') || '');
+  },
+  'kb-source'(fd) { state.sources.push({ id: uid('src'), name: fd.get('name'), kind: fd.get('kind'), docs: 0, lastSync: 'never', status: 'ok', acl: fd.get('acl') }); audit('console user', 'kb.source_added', fd.get('name')); render(); toast('Connector registered. First sync runs at 02:00.'); },
+  'kb-glossary'(fd) { state.glossary.push({ term: fd.get('term'), meaning: fd.get('meaning'), synonyms: String(fd.get('synonyms') || '').split(',').map(s => s.trim()).filter(Boolean) }); audit('console user', 'kb.glossary_added', fd.get('term')); render(); toast('Term added; retrieval now expands it'); },
+  'add-schedule'(fd, form) { const rules = [...form.querySelector('[name=rules]').selectedOptions].map(o => o.value); state.triggers.schedules.push({ id: uid('sch'), name: fd.get('name'), cron: fd.get('cron'), human: 'custom', runs: [], rules, lastRun: 'never', next: 'next match', status: 'ok' }); audit('console user', 'schedule.created', `${fd.get('name')} (${fd.get('cron')})`); render(); toast('Schedule created'); },
+  'tool-run'(fd, form, submitter) {
+    const name = form.dataset.tool; const t = TOOLS.find(x => x.name === name); const args = {};
+    for (const p of t.params) { let v = fd.get(p.n); if (p.t === 'number') v = v === '' ? undefined : +v; else if (p.t === 'bool') v = v === 'true'; args[p.n] = v; }
+    const mode = submitter && submitter.value === 'dry' ? 'dry' : 'live';
+    if ('dry_run' in args) args.dry_run = mode === 'dry' ? true : args.dry_run;
+    const t0 = performance.now(); let out;
+    if (mode === 'dry' && !('dry_run' in args)) { out = { decision: policyDecision(name, args), result: runTool(name, args) }; audit('console user', 'tool.dry_run', `${name} ${JSON.stringify(args)} (read-only preview)`); }
+    else out = callTool(name, args, 'console user');
+    state.toolResult = { tool: name, ...out, ms: Math.max(12, Math.round(performance.now() - t0 + 40 + Math.random() * 120)) }; render();
+  },
+  scenario(fd) { state.scenario = { page: fd.get('page'), cause: fd.get('cause'), drop: +fd.get('drop'), days: +fd.get('days'), applied: state.scenario.applied }; const { task } = applyScenario(); render(); toast(task ? `Rule fired; agent trace ready for ${task.page}` : 'No active rule fired with these numbers'); },
+  chat(fd, form) { const q = (fd.get('q') || '').trim(); if (!q) return; form.reset(); doChat(q); },
+};
+
+// ---------- wiring
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]'); if (!el) return;
+  if (el.tagName === 'A') e.preventDefault();
+  const fn = A[el.dataset.action]; if (fn) fn(el.dataset, el);
+});
+document.addEventListener('submit', e => {
+  const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault();
+  const fn = FORMS[f.dataset.form]; if (fn) fn(new FormData(f), f, e.submitter);
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.change === 'rule-filter') { state.ui.ruleFilter = el.value; render(); return; }
+  if (el.dataset.change === 'sim-page') { if (state.lastRuleSim) state.lastRuleSim.page = el.value; render(); return; }
+  if (el.dataset.ruleField) {
+    const r = getRule(state.ui.ruleId); if (!r) return;
+    let v = el.value; const kind = el.dataset.kind;
+    if (kind === 'list') v = v.split(',').map(s => s.trim()).filter(Boolean).map(x => isNaN(+x) || x === '' ? x : +x);
+    else if (kind === 'number' || el.type === 'number') v = +v;
+    else if (v === 'true' || v === 'false') v = v === 'true';
+    setPath(r, el.dataset.ruleField, v);
+    if (el.dataset.ruleField === 'entity') r.condition = v === 'orders' ? { days_in_status_gt: 7 } : { hours_open_gt: 4 };
+    audit('console user', 'rule.edited', `${r.id}: ${el.dataset.ruleField} = ${Array.isArray(v) ? v.join(',') : v}`);
+    if (state.lastRuleSim && state.lastRuleSim.ruleId === r.id) A['simulate-rule']({ id: r.id }); else render();
+  }
+});
+document.addEventListener('input', e => { const el = e.target; if (el.dataset.input === 'range-out') { const o = document.getElementById(el.dataset.out); if (o) o.textContent = el.value; } });
+
+function start() {
+  load();
+  // metrics are generated relative to today; regenerate when the stored series is stale
+  const any = Object.values(state.metrics)[0];
+  if (!any || any[any.length - 1].date !== dayStr(-1)) { state.metrics = genMetrics(); state.scenario.applied = false; state.lastEval = null; }
+  const h = (location.hash || '').replace('#', ''); if (VIEWS[h]) state.ui.view = h;
+  render();
+}
+start();
+</script>

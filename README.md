@@ -24,6 +24,8 @@ systems goes through a **tool layer** that you build once per system.
 | 5 | [docs/05-tool-system.md](docs/05-tool-system.md) | *What is the tool system, how do I expose in-house software to the assistant?* |
 | 6 | [docs/06-learning-loop.md](docs/06-learning-loop.md) | *How does the assistant learn the company flows?* |
 | 7 | [docs/07-roadmap.md](docs/07-roadmap.md) | *In what order do we build it, and how do we know it works?* |
+| 8 | [docs/08-web-console.md](docs/08-web-console.md) | *What does the admin console look like?* Screen map, data model, API. |
+| – | [console/index.html](console/index.html) | Clickable prototype of the console with working in-browser engines (open the file in a browser). |
 | – | [examples/](examples/) | Concrete rule, tool and playbook definitions you can copy. |
 
 ## The one-paragraph version
