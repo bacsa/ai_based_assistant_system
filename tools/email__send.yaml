@@ -1,0 +1,18 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: email.send
+server: mcp-mail
+class: communicate
+risk: medium
+description: Sends an email from the assistant mailbox using a named template. Policy requires approval for external recipients.
+input_schema:
+  type: object
+  required: [to, template]
+  properties:
+    to: {type: string}
+    template: {type: string, enum: [payment_follow_up, document_request, generic]}
+    variables: {type: object}
+    dry_run: {type: boolean, default: true}
+auth: {mode: service_account, credential_ref: vault://mcp-mail}
+idempotency: idempotency_key required
+dry_run: supported
+observability: {log_arguments: true, mask_fields: [to]}

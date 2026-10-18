@@ -1,0 +1,17 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: crm.add_note
+server: mcp-erp
+class: write
+risk: low
+description: Adds a timestamped note to a customer or order record in the ERP/CRM. Reversible; auto-allowed by policy.
+input_schema:
+  type: object
+  required: [record_id, text]
+  properties:
+    record_id: {type: string}
+    text: {type: string}
+    dry_run: {type: boolean, default: true}
+auth: {mode: service_account, credential_ref: vault://mcp-erp}
+idempotency: idempotency_key required
+dry_run: supported
+observability: {log_arguments: true, mask_fields: []}

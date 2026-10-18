@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.internal/tool/v1.json",
+  "title": "Tool specification (one MCP tool)",
+  "type": "object",
+  "required": ["name", "server", "class", "risk", "description", "input_schema"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$", "description": "system.verb_object" },
+    "server": { "type": "string" },
+    "class": { "enum": ["read", "write", "communicate", "knowledge", "meta"] },
+    "risk": { "enum": ["low", "medium", "high"] },
+    "description": { "type": "string", "minLength": 20 },
+    "input_schema": { "type": "object" },
+    "output_schema": { "type": "object" },
+    "auth": { "type": "object", "properties": { "mode": { "enum": ["service_account", "on_behalf_of_user"] }, "credential_ref": { "type": "string" } } },
+    "idempotency": { "type": "string" },
+    "dry_run": { "type": "string" },
+    "rate_limit": { "type": ["string", "object"] },
+    "timeout_seconds": { "type": "integer" },
+    "observability": { "type": "object" },
+    "tests": { "type": "object" }
+  },
+  "allOf": [
+    { "if": { "properties": { "class": { "const": "write" } } }, "then": { "required": ["idempotency", "dry_run"] } }
+  ]
+}

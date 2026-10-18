@@ -1,0 +1,19 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: tls.expiry
+server: mcp-seo
+class: read
+risk: low
+description: Expiry date of the certificate served by a host.
+input_schema:
+  type: object
+  required: []
+  properties:
+    host:
+      type: string
+      default: www.example.com
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-seo
+observability:
+  log_arguments: true
+  mask_fields: []

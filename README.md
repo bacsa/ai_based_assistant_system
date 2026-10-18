@@ -1,4 +1,6 @@
-# AI Operations Assistant – Architecture Plan
+# AI Operations Assistant – Blueprint
+
+> **Handing this over or starting a new client project?** Read [HANDOVER.md](HANDOVER.md) first (map of the repository, order of work, conventions). AI agents: see [AGENTS.md](AGENTS.md).
 
 A plan for building a company-internal AI assistant that:
 
@@ -13,6 +15,18 @@ The plan is written for a company with its own architecture and in-house softwar
 so it does not assume any specific SaaS stack. Everything that touches the company's
 systems goes through a **tool layer** that you build once per system.
 
+## Repository at a glance
+
+| Path | Purpose |
+|------|---------|
+| `docs/` | the method and architecture (reading order in `docs/00-index.md`) |
+| `inventory/` | discovery outputs; `templates/` for a new client, the rest is demo data |
+| `rules/`, `tools/`, `playbooks/`, `flows/`, `events/` | definitions as files, validated by `scripts/validate.py` against `schemas/` |
+| `reference/python/` | tested reference implementation of the engines |
+| `services/`, `infra/`, `contracts/` | application frame: service contracts, local stack, console API |
+| `console/` | clickable prototype with smoke tests |
+| `evals/` | golden questions and demo documents |
+
 ## How to read this plan
 
 | # | Document | Answers |
@@ -26,6 +40,7 @@ systems goes through a **tool layer** that you build once per system.
 | 7 | [docs/07-roadmap.md](docs/07-roadmap.md) | *In what order do we build it, and how do we know it works?* |
 | 9 | [docs/09-event-messaging.md](docs/09-event-messaging.md) | *How does it react in real time?* Event bus, producers, consumers, reliability rules, technology choice. |
 | 10 | [docs/10-flow-designer.md](docs/10-flow-designer.md) | *How do clients see and shape the flows?* n8n-style canvas, execution model, live monitoring, build vs embed. |
+| 11 | [docs/11-decisions.md](docs/11-decisions.md) | *Why was it built this way?* Decision log. |
 | 8 | [docs/08-web-console.md](docs/08-web-console.md) | *What does the admin console look like?* Screen map, data model, API. |
 | – | [console/index.html](console/index.html) | Clickable prototype of the console with working in-browser engines (open the file in a browser). |
 | – | [examples/](examples/) | Concrete rule, tool and playbook definitions you can copy. |

@@ -1,0 +1,34 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: metrics.query
+server: metrics
+class: knowledge
+risk: low
+description: Time series of a signal with its baseline for one dimension value.
+input_schema:
+  type: object
+  required:
+  - signal
+  - page
+  properties:
+    signal:
+      type: string
+      enum:
+      - search_console.clicks
+      - search_console.impressions
+    page:
+      type: string
+      enum:
+      - /pricing
+      - /
+      - /blog/seo-checklist
+      - /product/erp
+      - /contact
+    days:
+      type: integer
+      default: 14
+auth:
+  mode: service_account
+  credential_ref: vault://metrics
+observability:
+  log_arguments: true
+  mask_fields: []

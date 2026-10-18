@@ -1,0 +1,65 @@
+{
+  "id": "new-document-review",
+  "name": "New knowledge document review",
+  "version": 1,
+  "status": "paused",
+  "owner": "it",
+  "description": "A small example flow; paused so it does not notify during the live feed.",
+  "trigger": {
+    "eventType": "kb.document.changed",
+    "filter": ""
+  },
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "name": "On kb.document.changed",
+      "params": {
+        "eventType": "kb.document.changed",
+        "filter": ""
+      },
+      "position": [
+        30,
+        30
+      ]
+    },
+    {
+      "id": "owner",
+      "type": "notify",
+      "name": "Tell the document owner",
+      "params": {
+        "channel": "#it-ops",
+        "text": "Document {{data.document_id}} was re-indexed ({{data.chunks}} chunks)."
+      },
+      "position": [
+        270,
+        30
+      ]
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "Done",
+      "params": {
+        "status": "success",
+        "summary": "Owner informed"
+      },
+      "position": [
+        510,
+        30
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "trigger",
+      "to": "owner",
+      "label": ""
+    },
+    {
+      "from": "owner",
+      "to": "end",
+      "label": ""
+    }
+  ]
+}

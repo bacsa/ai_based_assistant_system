@@ -1,0 +1,23 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: time. See docs/04-rule-system.md.
+id: ssl-cert-expiry
+type: time
+status: active
+owner: it
+owner_role: it_lead
+severity: high
+review_date: '2027-03-01'
+description: Wildcard TLS certificate expiry.
+due:
+  date: '2026-10-27'
+lead_times_days:
+- 14
+- 3
+requires_ack: true
+playbook: null
+context_tools:
+- tls.expiry
+- kb.search
+escalation:
+- after: 24h
+  notify_role: cfo

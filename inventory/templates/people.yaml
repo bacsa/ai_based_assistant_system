@@ -1,0 +1,10 @@
+# Routing table. Roles are what rules, flows and approvals refer to; people can change.
+people:
+  - role: finance_lead
+    name: ""
+    team: Finance
+    channel: "#finance"          # where alerts for this role go
+    dm: "@…"
+    backup: cfo
+    quiet_hours: "18:00-08:00 Europe/Budapest"
+    autonomy_appetite: suggest    # observe | suggest | approve | auto

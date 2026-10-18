@@ -1,0 +1,21 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: entities.sql
+server: entities
+class: knowledge
+risk: low
+description: Read-only SQL over the entity tables (deadlines, people, systems, processes). Allow-listed tables,
+  200-row limit.
+input_schema:
+  type: object
+  required:
+  - query
+  properties:
+    query:
+      type: string
+      default: select role, name, channel from people where team like '%Finance%'
+auth:
+  mode: service_account
+  credential_ref: vault://entities
+observability:
+  log_arguments: true
+  mask_fields: []

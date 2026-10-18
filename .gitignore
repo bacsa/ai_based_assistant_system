@@ -1,0 +1,5 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+console/tests/out/
+console/node_modules/

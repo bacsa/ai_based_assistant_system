@@ -1,0 +1,2 @@
+id,name,domain,source_tool,cadence,dimensions,baseline_method,threshold_in_use_today,owner_role,history_available_weeks,notes
+search_console.clicks,"Organic clicks per landing page","seo","seo.get_search_console_series","daily (2-day lag)","page","same_weekday_median_28d","drop > 30 %","seo_owner",12,""

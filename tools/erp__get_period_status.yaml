@@ -1,0 +1,19 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: erp.get_period_status
+server: mcp-erp
+class: read
+risk: low
+description: Whether an accounting period is open or closed in the ERP.
+input_schema:
+  type: object
+  required: []
+  properties:
+    period:
+      type: string
+      default: 2026-10
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-erp
+observability:
+  log_arguments: true
+  mask_fields: []

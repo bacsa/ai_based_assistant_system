@@ -1,0 +1,47 @@
+# Routing table: role -> person -> channel -> backup. DEMO DATA; replace with the client's people.
+people:
+- role: seo_owner
+  name: Kata Nagy
+  team: Product marketing
+  channel: '#marketing'
+  backup: marketing_lead
+- role: marketing_lead
+  name: Péter Szabó
+  team: Marketing
+  channel: '#marketing'
+  backup: head_of_digital
+- role: head_of_digital
+  name: Réka Molnár
+  team: Management
+  channel: '@reka'
+  backup: –
+- role: finance_lead
+  name: Anna Kovács
+  team: Finance
+  channel: '#finance'
+  backup: cfo
+- role: cfo
+  name: Gábor Tóth
+  team: Management
+  channel: '@gabor'
+  backup: –
+- role: it_lead
+  name: Bence Farkas
+  team: IT operations
+  channel: '#it-ops'
+  backup: it_admin
+- role: sales_ops
+  name: Dóra Kiss
+  team: Sales operations
+  channel: '#sales-ops'
+  backup: sales_lead
+- role: procurement_lead
+  name: Zsófia Balogh
+  team: Procurement
+  channel: '#procurement'
+  backup: cfo
+- role: support_lead
+  name: Márton Lukács
+  team: Customer support
+  channel: '#support'
+  backup: sales_ops

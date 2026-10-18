@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.internal/flow/v1.json",
+  "title": "Flow definition (visual orchestration over the event bus)",
+  "type": "object",
+  "required": ["id", "name", "version", "status", "owner", "trigger", "nodes", "edges"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "name": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["draft", "paused", "active"] },
+    "owner": { "type": "string" },
+    "description": { "type": "string" },
+    "trigger": { "type": "object", "required": ["eventType"], "properties": { "eventType": { "type": "string" }, "filter": { "type": "string" } } },
+    "nodes": {
+      "type": "array", "minItems": 2,
+      "items": { "type": "object", "required": ["id", "type", "name", "params"], "properties": {
+        "id": { "type": "string" },
+        "type": { "enum": ["trigger", "filter", "rule", "tool", "agent", "approval", "notify", "task", "wait", "delay", "end"] },
+        "name": { "type": "string" },
+        "params": { "type": "object" },
+        "position": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }
+      } }
+    },
+    "edges": { "type": "array", "items": { "type": "object", "required": ["from", "to"], "properties": { "from": { "type": "string" }, "to": { "type": "string" }, "label": { "type": "string" } } } }
+  }
+}

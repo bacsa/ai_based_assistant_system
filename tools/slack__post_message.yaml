@@ -1,0 +1,29 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: slack.post_message
+server: mcp-slack
+class: communicate
+risk: low
+description: Posts a message to a channel or a person.
+input_schema:
+  type: object
+  required:
+  - channel
+  - text
+  properties:
+    channel:
+      type: string
+      enum:
+      - '#marketing'
+      - '#finance'
+      - '#it-ops'
+      - '#sales-ops'
+      - '#general'
+    text:
+      type: string
+      default: Test message from the console
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-slack
+observability:
+  log_arguments: true
+  mask_fields: []

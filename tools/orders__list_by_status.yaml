@@ -1,0 +1,24 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: orders.list_by_status
+server: mcp-erp
+class: read
+risk: low
+description: Sales orders in a status with days in status.
+input_schema:
+  type: object
+  required:
+  - status
+  properties:
+    status:
+      type: string
+      enum:
+      - awaiting_payment
+      - new
+      - paid
+      - in_fulfilment
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-erp
+observability:
+  log_arguments: true
+  mask_fields: []

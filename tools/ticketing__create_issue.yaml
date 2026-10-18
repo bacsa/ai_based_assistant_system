@@ -1,0 +1,29 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: ticketing.create_issue
+server: mcp-ticketing
+class: write
+risk: low
+description: Creates a Jira issue.
+input_schema:
+  type: object
+  required:
+  - project
+  - summary
+  properties:
+    project:
+      type: string
+      enum:
+      - WEB
+      - FIN
+      - ITOPS
+    summary:
+      type: string
+      default: Investigate organic drop on /pricing
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-ticketing
+observability:
+  log_arguments: true
+  mask_fields: []
+idempotency: idempotency_key required
+dry_run: not applicable

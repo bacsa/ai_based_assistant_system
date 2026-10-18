@@ -1,0 +1,31 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: threshold. See docs/04-rule-system.md.
+id: seo-impressions-drop
+type: threshold
+status: shadow
+owner: marketing
+owner_role: seo_owner
+severity: medium
+review_date: '2027-04-01'
+description: 'Impressions on a key page fell: ranking or indexing problem.'
+signal: search_console.impressions
+scope_pages:
+- /pricing
+- /
+- /blog/seo-checklist
+- /product/erp
+baseline:
+  method: same_weekday_median
+  window_days: 28
+condition:
+  ratio_lt: 0.75
+  consecutive: 2
+  min_baseline: 500
+cooldown_days: 3
+playbook: seo-drop-triage
+allowed_actions:
+- slack.post_message
+- ticketing.create_issue
+escalation:
+- after: 48h
+  notify_role: marketing_lead

@@ -1,0 +1,5 @@
+id,name,owner_role,source_of_truth,due_rule,lead_times_days,requires_ack,consequence_if_missed,escalation_role,notes
+vat-return,"Monthly VAT return (ÁFA) to NAV","finance_lead","tax calendar","day_of_month=20","10,3,1",true,"default penalty from NAV","cfo","DEMO DATA. Mirrors rules/vat-return.yaml"
+ssl-cert-expiry,"Wildcard TLS certificate renewal","it_lead","IT asset register / tls.expiry collector","date=<certificate expiry>","14,3",true,"website and mail gateway down","cfo","DEMO DATA. Re-armed by tls.certificate.observed"
+supplier-contract-cloudhost,"Hosting provider contract notice","procurement_lead","contract register","date=<renewal date>","90,60,30",true,"auto-renewal at old price","cfo","DEMO DATA"
+doc-review-seo-guidelines,"Review of 'SEO guidelines for key pages'","seo_owner","knowledge base document metadata","date=<last update + review cycle>","14",true,"stale guidance in the knowledge base","marketing_lead","DEMO DATA. Generated from document review cycles"

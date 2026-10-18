@@ -1,0 +1,198 @@
+{
+  "id": "key-page-regression-response",
+  "name": "Key page regression response",
+  "version": 1,
+  "status": "active",
+  "owner": "marketing",
+  "description": "Handles every SEO anomaly the rule engine detects: enrich, let the agent triage, alert the owner, and either fix behind an approval or hand over with a ticket.",
+  "trigger": {
+    "eventType": "seo.anomaly.detected",
+    "filter": ""
+  },
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "name": "On seo.anomaly.detected",
+      "params": {
+        "eventType": "seo.anomaly.detected",
+        "filter": ""
+      },
+      "position": [
+        30,
+        30
+      ]
+    },
+    {
+      "id": "diff",
+      "type": "tool",
+      "name": "Crawl diff of the page",
+      "params": {
+        "tool": "crawler.diff_page",
+        "args": "{\"url\":\"{{data.path|event.subject}}\",\"since_days\":7}"
+      },
+      "position": [
+        270,
+        30
+      ]
+    },
+    {
+      "id": "deploys",
+      "type": "tool",
+      "name": "Recent CMS deployments",
+      "params": {
+        "tool": "deploy.list_recent",
+        "args": "{\"system\":\"cms\",\"days\":7}"
+      },
+      "position": [
+        510,
+        30
+      ]
+    },
+    {
+      "id": "triage",
+      "type": "agent",
+      "name": "SEO drop triage",
+      "params": {
+        "playbook": "seo-drop-triage",
+        "instruction": "Rank the likely causes from the diff, deployments and metrics; recommend one action."
+      },
+      "position": [
+        750,
+        30
+      ]
+    },
+    {
+      "id": "isnoindex",
+      "type": "filter",
+      "name": "Is it a noindex regression?",
+      "params": {
+        "field": "nodes.diff.summary",
+        "op": "contains",
+        "value": "noindex"
+      },
+      "position": [
+        990,
+        30
+      ]
+    },
+    {
+      "id": "notify",
+      "type": "notify",
+      "name": "Alert the SEO owner",
+      "params": {
+        "channel": "#marketing",
+        "text": "{{nodes.triage.summary}}"
+      },
+      "position": [
+        1230,
+        30
+      ]
+    },
+    {
+      "id": "approve",
+      "type": "approval",
+      "name": "Approve removing noindex",
+      "params": {
+        "tool": "cms.remove_noindex",
+        "args": "{\"path\":\"{{event.subject}}\",\"dry_run\":false}",
+        "approverRole": "seo_owner"
+      },
+      "position": [
+        1470,
+        30
+      ]
+    },
+    {
+      "id": "ticket",
+      "type": "tool",
+      "name": "Open a ticket for manual review",
+      "params": {
+        "tool": "ticketing.create_issue",
+        "args": "{\"project\":\"WEB\",\"summary\":\"Review organic drop on {{event.subject}}\"}"
+      },
+      "position": [
+        1710,
+        30
+      ]
+    },
+    {
+      "id": "done",
+      "type": "end",
+      "name": "Resolved",
+      "params": {
+        "status": "success",
+        "summary": "Fix applied and page re-indexed"
+      },
+      "position": [
+        1710,
+        126
+      ]
+    },
+    {
+      "id": "manual",
+      "type": "end",
+      "name": "Handed to a person",
+      "params": {
+        "status": "success",
+        "summary": "Ticket created"
+      },
+      "position": [
+        1950,
+        30
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "trigger",
+      "to": "diff",
+      "label": ""
+    },
+    {
+      "from": "diff",
+      "to": "deploys",
+      "label": ""
+    },
+    {
+      "from": "deploys",
+      "to": "triage",
+      "label": ""
+    },
+    {
+      "from": "triage",
+      "to": "isnoindex",
+      "label": ""
+    },
+    {
+      "from": "isnoindex",
+      "to": "notify",
+      "label": "true"
+    },
+    {
+      "from": "isnoindex",
+      "to": "ticket",
+      "label": "false"
+    },
+    {
+      "from": "notify",
+      "to": "approve",
+      "label": ""
+    },
+    {
+      "from": "approve",
+      "to": "done",
+      "label": "approved"
+    },
+    {
+      "from": "approve",
+      "to": "ticket",
+      "label": "rejected"
+    },
+    {
+      "from": "ticket",
+      "to": "manual",
+      "label": ""
+    }
+  ]
+}

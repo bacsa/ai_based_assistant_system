@@ -1,0 +1,25 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: crawler.fetch_page
+server: mcp-seo
+class: read
+risk: low
+description: Fetches a page and returns status, title, canonical, robots meta and H1.
+input_schema:
+  type: object
+  required:
+  - url
+  properties:
+    url:
+      type: string
+      enum:
+      - /pricing
+      - /
+      - /blog/seo-checklist
+      - /product/erp
+      - /contact
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-seo
+observability:
+  log_arguments: true
+  mask_fields: []

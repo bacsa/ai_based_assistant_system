@@ -1,0 +1,51 @@
+# Local development stack for the AI operations assistant.
+# Start: docker compose -f infra/docker-compose.yml up -d
+# Services with a build context are placeholders until the per-client code exists (see services/*/README.md).
+services:
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports: ["4222:4222", "8222:8222"]
+    volumes: ["nats-data:/data"]
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: assistant, POSTGRES_PASSWORD: assistant, POSTGRES_DB: assistant }
+    ports: ["5432:5432"]
+    volumes: ["pg-data:/var/lib/postgresql/data", "./sql:/docker-entrypoint-initdb.d:ro"]
+  temporal:
+    image: temporalio/auto-setup:1.25
+    depends_on: [postgres]
+    environment: { DB: postgres12, DB_PORT: "5432", POSTGRES_USER: assistant, POSTGRES_PWD: assistant, POSTGRES_SEEDS: postgres }
+    ports: ["7233:7233"]
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    depends_on: [temporal]
+    environment: { TEMPORAL_ADDRESS: temporal:7233 }
+    ports: ["8233:8080"]
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports: ["6333:6333"]
+    volumes: ["qdrant-data:/qdrant/storage"]
+  langfuse:
+    image: langfuse/langfuse:2
+    depends_on: [postgres]
+    environment:
+      DATABASE_URL: postgresql://assistant:assistant@postgres:5432/assistant
+      NEXTAUTH_SECRET: change-me
+      SALT: change-me
+      NEXTAUTH_URL: http://localhost:3000
+    ports: ["3000:3000"]
+  console:
+    image: nginx:1.27-alpine
+    volumes: ["../console:/usr/share/nginx/html:ro"]
+    ports: ["8080:80"]
+  # --- application services (build once the per-client code exists) ---
+  # webhook-ingress: { build: ../services/webhook-ingress, ports: ["8081:8080"], environment: { NATS_URL: nats://nats:4222 } }
+  # rule-engine:     { build: ../services/rule-engine, environment: { NATS_URL: nats://nats:4222, DATABASE_URL: postgresql://assistant:assistant@postgres:5432/assistant } }
+  # timer-service:   { build: ../services/timer-service }
+  # orchestrator:    { build: ../services/orchestrator, environment: { TEMPORAL_ADDRESS: temporal:7233, ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY} } }
+  # guardrails:      { build: ../services/guardrails }
+  # notifier:        { build: ../services/notifier }
+  # kb-pipeline:     { build: ../services/kb-pipeline, environment: { QDRANT_URL: http://qdrant:6333 } }
+  # console-api:     { build: ../services/console-api, ports: ["8090:8080"] }
+volumes: { nats-data: {}, pg-data: {}, qdrant-data: {} }

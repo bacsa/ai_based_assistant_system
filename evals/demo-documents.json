@@ -1,0 +1,185 @@
+{
+  "documents": [
+    {
+      "id": "finance-handbook",
+      "title": "Finance Handbook",
+      "type": "policy",
+      "dept": "finance",
+      "owner": "finance_lead",
+      "acl": [
+        "finance",
+        "management"
+      ],
+      "reviewEvery": 180,
+      "chunks": [
+        {
+          "heading": "Invoicing › Payment terms",
+          "text": "Customer invoices are issued with 14 days net payment terms. An invoice is overdue on day 15. Payment reminders are sent in three levels: level 1 at 7 days overdue, level 2 at 21 days overdue and level 3 at 35 days overdue. Level 3 reminders announce hand-over to collection and must be approved by the finance lead before sending."
+        },
+        {
+          "heading": "Invoicing › Reminder wording and channel",
+          "text": "Level 1 and 2 reminders are sent by email from the ERP reminder module using the standard template. Flagged customers (key accounts and customers in dispute) never receive automatic reminders; the account manager is informed instead. Reminders are limited to one per customer per week."
+        },
+        {
+          "heading": "Month-end close checklist",
+          "text": "The accounting period must be closed in the ERP by the 5th business day of the following month. Before closing: all supplier invoices booked, bank statements reconciled, accruals posted, VAT ledger exported for the ÁFA return. The finance lead confirms the close in the #finance channel."
+        }
+      ]
+    },
+    {
+      "id": "vat-return-procedure",
+      "title": "VAT return procedure (ÁFA bevallás)",
+      "type": "sop",
+      "dept": "finance",
+      "owner": "finance_lead",
+      "acl": [
+        "finance",
+        "management"
+      ],
+      "reviewEvery": 365,
+      "chunks": [
+        {
+          "heading": "Deadline and ownership",
+          "text": "The monthly VAT return (ÁFA bevallás, form 2665) is due to NAV, the Hungarian tax authority, by the 20th of the following month. The finance lead owns the filing; the CFO is the backup. Payment of the VAT liability is due on the same day."
+        },
+        {
+          "heading": "Steps",
+          "text": "1. Export the VAT ledger from the ERP accounting module for the closed period. 2. Reconcile the ledger totals with the general ledger VAT accounts. 3. Prepare the return in the NAV ÁNYK or ONYA system. 4. Have the CFO review returns above 5 million HUF. 5. Submit and download the confirmation. 6. Archive the confirmation in SharePoint under Finance/VAT/<year>/<month>."
+        },
+        {
+          "heading": "Common problems",
+          "text": "If the accounting period is still open in the ERP, the export is incomplete. Close the period first (see Month-end close checklist). Late filing results in a default penalty from NAV, so file an estimated return and correct it later rather than missing the date."
+        }
+      ]
+    },
+    {
+      "id": "cms-release-process",
+      "title": "CMS release process",
+      "type": "sop",
+      "dept": "it",
+      "owner": "it_lead",
+      "acl": [
+        "it",
+        "marketing",
+        "management"
+      ],
+      "reviewEvery": 180,
+      "chunks": [
+        {
+          "heading": "Release windows",
+          "text": "Website CMS deployments happen on Tuesdays and Thursdays between 9:00 and 11:00. Every release is first deployed to staging and checked by the requesting team. Emergency fixes outside the window need approval from the IT lead."
+        },
+        {
+          "heading": "Pre-publish SEO checklist",
+          "text": "Before publishing changes to key pages (home, pricing, product pages, top blog posts) the release owner runs the SEO checklist: title 50 to 60 characters, meta description present, canonical points to the page itself, robots meta is index,follow, structured data validates, and the page is in the sitemap. A noindex tag on a key page is a release blocker."
+        },
+        {
+          "heading": "Page ownership",
+          "text": "The pricing page and product pages are owned by Product marketing (SEO owner: Kata Nagy). The blog is owned by Content marketing. The home page is owned by the marketing lead. Owners approve content changes and are notified of any deployment touching their pages."
+        }
+      ]
+    },
+    {
+      "id": "seo-guidelines",
+      "title": "SEO guidelines for key pages",
+      "type": "guideline",
+      "dept": "marketing",
+      "owner": "seo_owner",
+      "acl": [
+        "marketing",
+        "all-staff"
+      ],
+      "reviewEvery": 180,
+      "chunks": [
+        {
+          "heading": "Key pages and monitoring",
+          "text": "Key pages (KP) are the home page, /pricing, the product pages and the top five blog posts by organic traffic. Search Console clicks, impressions and average position are reviewed weekly for key pages. A drop of more than 30 percent against the usual level for a key page is investigated within one business day."
+        },
+        {
+          "heading": "Triage order for a traffic drop",
+          "text": "When organic traffic drops on a key page, check in this order: 1. is the page reachable and returning 200; 2. did the robots meta, canonical or title change (compare with the last crawl); 3. was there a CMS deployment in the two days before the drop; 4. did impressions drop as well (ranking or indexing issue) or only clicks (snippet or CTR issue); 5. is the drop site-wide, which points to an algorithm update or seasonality."
+        }
+      ]
+    },
+    {
+      "id": "certificate-management",
+      "title": "TLS certificate management",
+      "type": "sop",
+      "dept": "it",
+      "owner": "it_lead",
+      "acl": [
+        "it",
+        "management"
+      ],
+      "reviewEvery": 365,
+      "chunks": [
+        {
+          "heading": "Renewal rule",
+          "text": "The wildcard TLS certificate for the company domain is renewed 14 days before expiry, never later than 3 days before. Expiry dates are tracked in the IT asset register. The IT lead owns renewal; the IT admin is the backup. After installing the new certificate, verify with an external SSL checker and record the new expiry date in the register."
+        },
+        {
+          "heading": "Provider and steps",
+          "text": "Certificates are purchased from the current provider through the IT procurement account. Steps: generate CSR on the load balancer, order and validate by DNS record, install on the load balancer and the mail gateway, restart services in the maintenance window, verify, update the register."
+        }
+      ]
+    },
+    {
+      "id": "supplier-contract-policy",
+      "title": "Supplier contract renewal policy",
+      "type": "policy",
+      "dept": "procurement",
+      "owner": "procurement_lead",
+      "acl": [
+        "finance",
+        "procurement",
+        "management"
+      ],
+      "reviewEvery": 365,
+      "chunks": [
+        {
+          "heading": "Notice periods",
+          "text": "Most supplier contracts renew automatically for 12 months unless written notice is given 60 days before the renewal date. Contracts above 10 million HUF per year are reviewed 90 days before renewal by procurement and the CFO. The contract register in SharePoint holds the renewal date and the notice period of every contract."
+        }
+      ]
+    },
+    {
+      "id": "erp-user-guide-orders",
+      "title": "ERP user guide – Orders module",
+      "type": "manual",
+      "dept": "sales",
+      "owner": "sales_ops",
+      "acl": [
+        "all-staff"
+      ],
+      "reviewEvery": 365,
+      "chunks": [
+        {
+          "heading": "Order statuses",
+          "text": "A sales order (SO) moves through the statuses new, awaiting_payment, paid, in_fulfilment, shipped, closed. Orders are created from the web shop or manually by sales. The status awaiting_payment is set when the pro forma invoice is sent."
+        },
+        {
+          "heading": "Stuck orders",
+          "text": "An order that stays in awaiting_payment for more than 7 days is escalated to sales operations, who contact the customer. After 21 days without payment the order is cancelled and stock is released. Sales operations review the stuck-order list every Monday."
+        }
+      ]
+    },
+    {
+      "id": "onboarding-checklist",
+      "title": "New employee onboarding checklist",
+      "type": "checklist",
+      "dept": "hr",
+      "owner": "hr_lead",
+      "acl": [
+        "hr",
+        "management"
+      ],
+      "reviewEvery": 365,
+      "chunks": [
+        {
+          "heading": "First week",
+          "text": "Before day one HR creates the user account, orders the laptop and schedules the security training. In the first week the new employee completes the mandatory data protection training, meets their buddy, and gets access to the ERP and the ticketing system according to their role. Probation ends after 3 months and the manager files the probation review 2 weeks before."
+        }
+      ]
+    }
+  ]
+}

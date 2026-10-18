@@ -1,0 +1,12 @@
+[project]
+name = "assistant-core"
+version = "0.1.0"
+description = "Reference implementation of the deterministic engines of the AI operations assistant (rules, events, policy, flows, knowledge)."
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6", "jsonschema>=4"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

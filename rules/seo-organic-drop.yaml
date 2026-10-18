@@ -1,0 +1,35 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: threshold. See docs/04-rule-system.md.
+id: seo-organic-drop
+type: threshold
+status: active
+owner: marketing
+owner_role: seo_owner
+severity: high
+review_date: '2027-04-01'
+description: Organic clicks on a key landing page fell well below their usual level.
+signal: search_console.clicks
+scope_pages:
+- /pricing
+- /
+- /blog/seo-checklist
+- /product/erp
+baseline:
+  method: same_weekday_median
+  window_days: 28
+condition:
+  ratio_lt: 0.7
+  consecutive: 2
+  min_baseline: 20
+cooldown_days: 3
+playbook: seo-drop-triage
+allowed_actions:
+- slack.post_message
+- ticketing.create_issue
+- cms.remove_noindex
+- cms.set_page_meta
+escalation:
+- after: 24h
+  notify_role: marketing_lead
+- after: 72h
+  notify_role: head_of_digital

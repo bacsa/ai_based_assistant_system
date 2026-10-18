@@ -1,0 +1,35 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: erp.create_payment_reminder
+server: mcp-erp
+class: write
+risk: high
+description: 'Creates and sends a payment reminder for an invoice. Policy: auto below 500 EUR up to level 2, otherwise
+  approval.'
+input_schema:
+  type: object
+  required:
+  - invoice_id
+  properties:
+    invoice_id:
+      type: string
+      default: INV-2026-0912
+    amount:
+      type: integer
+      default: 320
+    level:
+      type: integer
+      default: 1
+    customer_flagged:
+      type: boolean
+      default: false
+    dry_run:
+      type: boolean
+      default: true
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-erp
+observability:
+  log_arguments: true
+  mask_fields: []
+idempotency: idempotency_key required
+dry_run: supported

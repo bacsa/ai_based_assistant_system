@@ -1,0 +1,215 @@
+# Event catalogue (what the console renders). Envelope: CloudEvents 1.0 + extensions, see docs/09-event-messaging.md and schemas/event.schema.json.
+defaults:
+  delivery: at-least-once
+  ack_window: 30s
+  max_deliver: 5
+  backoff:
+  - 5s
+  - 30s
+  - 2m
+  - 5m
+  - 10m
+  dead_letter: dlq.<consumer>
+types:
+- type: erp.invoice.posted
+  tier: domain
+  producer: ERP outbox
+  key: invoice_id
+  retention: 90 d
+  consumers:
+  - rule-engine
+  - timer-service
+  - metrics-projection
+  - audit-sink
+- type: erp.invoice.paid
+  tier: domain
+  producer: ERP outbox
+  key: invoice_id
+  retention: 90 d
+  consumers:
+  - rule-engine
+  - timer-service
+  - metrics-projection
+  - audit-sink
+- type: erp.order.status_changed
+  tier: domain
+  producer: ERP CDC (Debezium)
+  key: order_id
+  retention: 30 d
+  consumers:
+  - rule-engine
+  - timer-service
+  - metrics-projection
+  - audit-sink
+- type: cms.page.published
+  tier: domain
+  producer: CMS outbox
+  key: path
+  retention: 30 d
+  consumers:
+  - crawler-collector
+  - rule-engine
+  - audit-sink
+- type: crawl.page.changed
+  tier: domain
+  producer: crawler collector
+  key: path
+  retention: 30 d
+  consumers:
+  - rule-engine
+  - audit-sink
+- type: seo.metric.collected
+  tier: domain
+  producer: Search Console collector (on day.closed, changes only)
+  key: path
+  retention: 60 d
+  consumers:
+  - rule-engine
+  - metrics-projection
+- type: uptime.check.failed
+  tier: domain
+  producer: webhook ingress / uptime monitor
+  key: site
+  retention: 30 d
+  consumers:
+  - rule-engine
+  - audit-sink
+- type: tls.certificate.observed
+  tier: domain
+  producer: TLS collector
+  key: host
+  retention: 400 d
+  consumers:
+  - timer-service
+  - rule-engine
+- type: ticket.created
+  tier: domain
+  producer: webhook ingress / Jira
+  key: ticket_id
+  retention: 30 d
+  consumers:
+  - rule-engine
+  - timer-service
+- type: kb.document.changed
+  tier: domain
+  producer: source connectors, console
+  key: document_id
+  retention: 30 d
+  consumers:
+  - knowledge-indexer
+- type: producer.heartbeat
+  tier: domain
+  producer: every producer, 60 s
+  key: producer
+  retention: 2 d
+  consumers:
+  - liveness-monitor
+- type: day.closed
+  tier: timer
+  producer: timer service
+  key: date
+  retention: 7 d
+  consumers:
+  - search-console-collector
+  - reconciler
+- type: deadline.reminder.due
+  tier: timer
+  producer: timer service
+  key: deadline_id
+  retention: 30 d
+  consumers:
+  - rule-engine
+- type: seo.anomaly.detected
+  tier: derived
+  producer: rule engine
+  key: path
+  retention: 30 d
+  consumers:
+  - agent-orchestrator
+  - notifier
+  - audit-sink
+- type: order.stuck.detected
+  tier: derived
+  producer: rule engine
+  key: order_id
+  retention: 30 d
+  consumers:
+  - agent-orchestrator
+  - notifier
+  - audit-sink
+- type: site.incident.opened
+  tier: derived
+  producer: rule engine
+  key: site
+  retention: 30 d
+  consumers:
+  - agent-orchestrator
+  - notifier
+  - audit-sink
+- type: task.created
+  tier: derived
+  producer: rule engine
+  key: task_id
+  retention: 90 d
+  consumers:
+  - agent-orchestrator
+  - notifier
+  - metrics-projection
+  - audit-sink
+- type: task.acknowledged
+  tier: derived
+  producer: console, Slack buttons
+  key: task_id
+  retention: 90 d
+  consumers:
+  - agent-orchestrator
+  - metrics-projection
+  - audit-sink
+- type: approval.requested
+  tier: operational
+  producer: guardrails
+  key: approval_id
+  retention: 90 d
+  consumers:
+  - notifier
+  - audit-sink
+- type: approval.decided
+  tier: operational
+  producer: console, Slack buttons
+  key: approval_id
+  retention: 90 d
+  consumers:
+  - agent-orchestrator
+  - learning-loop
+  - audit-sink
+- type: tool.call.completed
+  tier: operational
+  producer: tool gateway
+  key: call_id
+  retention: 30 d
+  consumers:
+  - audit-sink
+  - metrics-projection
+- type: agent.step.completed
+  tier: operational
+  producer: agent orchestrator
+  key: task_id
+  retention: 30 d
+  consumers:
+  - audit-sink
+- type: flow.run.completed
+  tier: operational
+  producer: flow runner
+  key: run_id
+  retention: 30 d
+  consumers:
+  - audit-sink
+  - metrics-projection
+- type: uptime.check.recovered
+  tier: domain
+  producer: webhook ingress / uptime monitor
+  key: site
+  retention: 30 d
+  consumers:
+  - rule-engine
+  - audit-sink

@@ -1,0 +1,162 @@
+{
+  "id": "website-incident",
+  "name": "Website incident",
+  "version": 1,
+  "status": "active",
+  "owner": "it",
+  "description": "Opened by the rule engine pattern \"3 failed checks in 5 minutes\". Waits on the recovery event, escalates on timeout.",
+  "trigger": {
+    "eventType": "site.incident.opened",
+    "filter": ""
+  },
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "name": "On site.incident.opened",
+      "params": {
+        "eventType": "site.incident.opened",
+        "filter": ""
+      },
+      "position": [
+        30,
+        30
+      ]
+    },
+    {
+      "id": "status",
+      "type": "tool",
+      "name": "Current availability",
+      "params": {
+        "tool": "uptime.status",
+        "args": "{\"days\":1}"
+      },
+      "position": [
+        270,
+        30
+      ]
+    },
+    {
+      "id": "page",
+      "type": "notify",
+      "name": "Page IT operations",
+      "params": {
+        "channel": "#it-ops",
+        "text": "Incident on {{data.site}}: {{data.failures}} failed checks. Availability {{nodes.status.availability}}."
+      },
+      "position": [
+        510,
+        30
+      ]
+    },
+    {
+      "id": "task",
+      "type": "task",
+      "name": "Critical task for IT lead",
+      "params": {
+        "severity": "critical",
+        "ownerRole": "it_lead",
+        "title": "Website incident on {{data.site}}"
+      },
+      "position": [
+        750,
+        30
+      ]
+    },
+    {
+      "id": "recover",
+      "type": "wait",
+      "name": "Wait for recovery",
+      "params": {
+        "eventType": "uptime.check.recovered",
+        "keyField": "site",
+        "timeout": "4h"
+      },
+      "position": [
+        990,
+        30
+      ]
+    },
+    {
+      "id": "allclear",
+      "type": "notify",
+      "name": "All clear",
+      "params": {
+        "channel": "#it-ops",
+        "text": "{{data.site}} recovered."
+      },
+      "position": [
+        1230,
+        30
+      ]
+    },
+    {
+      "id": "escalate",
+      "type": "notify",
+      "name": "Escalate to management",
+      "params": {
+        "channel": "#general",
+        "text": "{{data.site}} down for 4 hours."
+      },
+      "position": [
+        1230,
+        126
+      ]
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "Closed",
+      "params": {
+        "status": "success",
+        "summary": "Incident closed"
+      },
+      "position": [
+        1470,
+        30
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "trigger",
+      "to": "status",
+      "label": ""
+    },
+    {
+      "from": "status",
+      "to": "page",
+      "label": ""
+    },
+    {
+      "from": "page",
+      "to": "task",
+      "label": ""
+    },
+    {
+      "from": "task",
+      "to": "recover",
+      "label": ""
+    },
+    {
+      "from": "recover",
+      "to": "allclear",
+      "label": "received"
+    },
+    {
+      "from": "recover",
+      "to": "escalate",
+      "label": "timeout"
+    },
+    {
+      "from": "allclear",
+      "to": "end",
+      "label": ""
+    },
+    {
+      "from": "escalate",
+      "to": "end",
+      "label": ""
+    }
+  ]
+}

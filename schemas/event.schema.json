@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.internal/event-envelope/v1.json",
+  "title": "Event envelope (CloudEvents 1.0 + company extensions)",
+  "type": "object",
+  "required": ["specversion", "id", "type", "source", "time", "idempotencykey", "partitionkey", "correlationid", "data"],
+  "properties": {
+    "specversion": { "const": "1.0" },
+    "id": { "type": "string", "minLength": 16, "description": "ULID, time-ordered, unique per event" },
+    "type": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9_]*){1,3}$", "description": "domain.entity.past_tense" },
+    "source": { "type": "string" },
+    "subject": { "type": "string" },
+    "time": { "type": "string", "format": "date-time" },
+    "datacontenttype": { "type": "string", "default": "application/json" },
+    "dataschema": { "type": "string", "format": "uri" },
+    "idempotencykey": { "type": "string", "description": "business key of the occurrence; consumers dedupe on it" },
+    "partitionkey": { "type": "string", "description": "ordering key (order id, page path, ...)" },
+    "correlationid": { "type": "string", "description": "shared by every event in one causal chain" },
+    "causationid": { "type": ["string", "null"], "description": "id of the event that directly caused this one" },
+    "actor": { "type": "string", "description": "user:<id> | system:<name> | agent:<name> | rule-engine | timer-service" },
+    "pii": { "type": "string", "enum": ["none", "possible", "contains"], "default": "none" },
+    "tenant": { "type": "string" },
+    "data": { "type": "object" }
+  },
+  "additionalProperties": false
+}

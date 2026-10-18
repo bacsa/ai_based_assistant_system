@@ -1,0 +1,23 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: state. See docs/04-rule-system.md.
+id: order-stuck-awaiting-payment
+type: state
+status: active
+owner: sales
+owner_role: sales_ops
+severity: medium
+review_date: '2027-02-01'
+description: Sales order waiting for payment for more than 7 days.
+entity: orders
+where:
+  status: awaiting_payment
+condition:
+  days_in_status_gt: 7
+schedule: every 15 min (poller)
+playbook: stuck-order-follow-up
+allowed_actions:
+- email.send
+- crm.add_note
+escalation:
+- after: 14d
+  notify_role: sales_lead

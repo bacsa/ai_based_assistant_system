@@ -1,0 +1,19 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: time. See docs/04-rule-system.md.
+id: doc-review-seo-guidelines
+type: time
+status: active
+owner: marketing
+owner_role: seo_owner
+severity: low
+review_date: '2027-06-01'
+description: Knowledge base document "SEO guidelines for key pages" passed its review date.
+due:
+  date: '2026-09-28'
+lead_times_days:
+- 14
+requires_ack: true
+playbook: null
+context_tools:
+- kb.get_document
+escalation: []

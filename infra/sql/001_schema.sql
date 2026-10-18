@@ -1,0 +1,22 @@
+-- Core tables (projections, timers, approvals, audit, flows). Event history itself lives in JetStream.
+create table if not exists documents (id text primary key, title text, type text, dept text, owner_role text, source_id text, updated_at timestamptz, review_every_days int, acl text[], url text);
+create table if not exists chunks (id bigserial primary key, document_id text references documents(id) on delete cascade, heading text, text text, tokens int, enrichment jsonb, acl text[]);
+create table if not exists sources (id text primary key, name text, kind text, default_acl text[], last_sync_at timestamptz, status text);
+create table if not exists glossary (term text primary key, meaning text, synonyms text[]);
+create table if not exists gaps (id bigserial primary key, question text, asked_count int default 1, asked_by text, last_asked_at timestamptz, status text default 'open');
+create table if not exists people (role text primary key, name text, team text, channel text, backup_role text, quiet_hours text);
+create table if not exists systems (name text primary key, type text, access_path text, auth text, test_instance text, criticality text, mcp_server text);
+create table if not exists rules (id text primary key, type text, status text, owner text, owner_role text, severity text, definition jsonb, version int, review_date date);
+create table if not exists rule_state (rule_id text, key text, state jsonb, last_fired_at timestamptz, primary key (rule_id, key));
+create table if not exists rule_stats (rule_id text, window_start date, fired int, acked int, dismissed int, primary key (rule_id, window_start));
+create table if not exists metrics (signal text, dimension text, ts timestamptz, value double precision, primary key (signal, dimension, ts));
+create table if not exists timers (id text primary key, fire_at timestamptz not null, type text not null, key text, reason text, created_by_event text, fired_at timestamptz);
+create index if not exists timers_due on timers (fire_at) where fired_at is null;
+create table if not exists processed_idempotency_keys (consumer text, key text, processed_at timestamptz default now(), primary key (consumer, key));
+create table if not exists tasks (id text primary key, rule_id text, type text, key text, severity text, owner_role text, status text, created_at timestamptz, evidence text, trace jsonb);
+create table if not exists approvals (id text primary key, tool text, args jsonb, dry_run_result jsonb, requested_by text, approver_role text, policy_rule text, status text, decided_by text, decided_at timestamptz, result jsonb, task_id text, run_id text, requested_at timestamptz default now());
+create table if not exists audit (id bigserial primary key, at timestamptz default now(), actor text, kind text, detail text, ref text, event_id text);
+create table if not exists flows (id text primary key, name text, version int, status text, owner text, definition jsonb, updated_at timestamptz default now());
+create table if not exists flow_runs (id text primary key, flow_id text, version int, trigger_event jsonb, correlation_id text, status text, started_at timestamptz, ended_at timestamptz, summary text, waiting jsonb);
+create table if not exists flow_run_steps (id bigserial primary key, run_id text references flow_runs(id) on delete cascade, node_id text, type text, status text, input jsonb, output jsonb, branch text, note text, ms int, at timestamptz default now());
+create table if not exists dead_letters (id bigserial primary key, event_id text, type text, consumer text, error text, attempts int, at timestamptz default now(), replayed_at timestamptz);

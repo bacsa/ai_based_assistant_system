@@ -1,0 +1,9 @@
+name,type,access,auth,test,crit,mcp
+ERP (in-house),in-house,REST API + DB read replica,service account,yes,high,mcp-erp
+CMS (in-house),in-house,REST API,service account,yes,medium,mcp-cms
+Google Search Console,SaaS,API,OAuth service account,n/a,low,mcp-seo
+Matomo analytics,self-hosted,API,token,n/a,low,mcp-seo
+Jira ticketing,SaaS,API + webhooks,OAuth,sandbox,medium,mcp-ticketing
+Slack,SaaS,API + events,bot token,test workspace,low,mcp-slack
+File share (SMB),on-prem,read-only mount,service account,n/a,low,kb-pipeline
+Uptime monitor,SaaS,API,token,n/a,low,mcp-seo

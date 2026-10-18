@@ -1,0 +1,30 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: cms.remove_noindex
+server: mcp-cms
+class: write
+risk: medium
+description: Removes a robots noindex meta tag from a page. Dry run returns the planned change.
+input_schema:
+  type: object
+  required:
+  - path
+  properties:
+    path:
+      type: string
+      enum:
+      - /pricing
+      - /
+      - /blog/seo-checklist
+      - /product/erp
+      - /contact
+    dry_run:
+      type: boolean
+      default: true
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-cms
+observability:
+  log_arguments: true
+  mask_fields: []
+idempotency: idempotency_key required
+dry_run: supported

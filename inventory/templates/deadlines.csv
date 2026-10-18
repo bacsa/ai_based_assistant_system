@@ -1,0 +1,2 @@
+id,name,owner_role,source_of_truth,due_rule,lead_times_days,requires_ack,consequence_if_missed,escalation_role,notes
+vat-return,"Monthly VAT return","finance_lead","tax calendar","day_of_month=20","10,3,1",true,"penalty","cfo",""

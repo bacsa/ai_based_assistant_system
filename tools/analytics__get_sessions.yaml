@@ -1,0 +1,28 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: analytics.get_sessions
+server: mcp-seo
+class: read
+risk: low
+description: Sessions per landing page from Matomo.
+input_schema:
+  type: object
+  required:
+  - page
+  properties:
+    page:
+      type: string
+      enum:
+      - /pricing
+      - /
+      - /blog/seo-checklist
+      - /product/erp
+      - /contact
+    days:
+      type: integer
+      default: 7
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-seo
+observability:
+  log_arguments: true
+  mask_fields: []

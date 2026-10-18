@@ -1,0 +1,18 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: policy. See docs/04-rule-system.md.
+id: policy-cms-writes
+type: policy
+status: active
+owner: marketing
+tool: cms.*
+dry_run_first: true
+rate_limit: 20 per day
+description: Changes to live pages through the CMS.
+decisions:
+- when: dry_run
+  allow: auto
+- when: path in key_pages
+  allow: approve
+  approver_role: seo_owner
+- when: otherwise
+  allow: auto

@@ -1,0 +1,19 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: uptime.status
+server: mcp-seo
+class: read
+risk: low
+description: Availability and error rate of the website over the last days.
+input_schema:
+  type: object
+  required: []
+  properties:
+    days:
+      type: integer
+      default: 7
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-seo
+observability:
+  log_arguments: true
+  mask_fields: []

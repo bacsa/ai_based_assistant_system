@@ -1,0 +1,26 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: deploy.list_recent
+server: mcp-cms
+class: read
+risk: low
+description: Recent deployments of a system with author and note.
+input_schema:
+  type: object
+  required:
+  - system
+  properties:
+    system:
+      type: string
+      enum:
+      - cms
+      - erp
+      - webshop
+    days:
+      type: integer
+      default: 7
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-cms
+observability:
+  log_arguments: true
+  mask_fields: []

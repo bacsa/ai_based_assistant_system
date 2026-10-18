@@ -1,0 +1,118 @@
+# Durable consumer definitions (subscriptions). See docs/09-event-messaging.md §9.7.
+consumers:
+- consumer: rule-engine
+  filters:
+  - erp.>
+  - cms.>
+  - crawl.>
+  - seo.metric.>
+  - uptime.>
+  - tls.>
+  - ticket.>
+  - deadline.>
+  role: 'Stream processor: baselines, consecutive counters, event patterns, state timers'
+  durable: true
+  ack: explicit, 30 s
+  maxDeliver: 5
+- consumer: timer-service
+  filters:
+  - erp.invoice.>
+  - erp.order.>
+  - tls.>
+  - ticket.created
+  role: Arms and cancels durable timers; emits deadline.reminder.due and day.closed
+  durable: true
+  ack: explicit, 30 s
+  maxDeliver: 5
+- consumer: crawler-collector
+  filters:
+  - cms.page.published
+  role: Re-crawls the touched page at once; publishes crawl.page.changed with the diff
+  durable: true
+  ack: explicit, 60 s
+  maxDeliver: 3
+- consumer: search-console-collector
+  filters:
+  - day.closed
+  role: Fetches the closed day, diffs with the snapshot, publishes seo.metric.collected per changed page
+  durable: true
+  ack: explicit, 5 min
+  maxDeliver: 3
+- consumer: agent-orchestrator
+  filters:
+  - task.created
+  - task.acknowledged
+  - approval.decided
+  - seo.anomaly.detected
+  - order.stuck.detected
+  - site.incident.opened
+  role: Starts a durable workflow per task; waits on approval and acknowledgement events; runs playbooks
+  durable: true
+  ack: explicit, 10 min
+  maxDeliver: 5
+- consumer: notifier
+  filters:
+  - task.created
+  - approval.requested
+  - seo.anomaly.detected
+  - order.stuck.detected
+  - site.incident.opened
+  - producer.silent
+  role: Renders events into Slack/Teams/email; one message per task, updated in place
+  durable: true
+  ack: explicit, 30 s
+  maxDeliver: 5
+- consumer: knowledge-indexer
+  filters:
+  - kb.document.changed
+  - ticket.resolved
+  role: Incremental re-index with ACL stamping
+  durable: true
+  ack: explicit, 5 min
+  maxDeliver: 3
+- consumer: metrics-projection
+  filters:
+  - erp.>
+  - seo.metric.>
+  - task.>
+  - tool.call.>
+  role: Builds the metrics and entity read models; rebuildable by replay
+  durable: true
+  ack: explicit, 30 s
+  maxDeliver: 5
+- consumer: learning-loop
+  filters:
+  - approval.decided
+  - task.resolved
+  role: Computes approval and correction rates per (playbook, tool); proposes autonomy changes
+  durable: true
+  ack: explicit, 30 s
+  maxDeliver: 5
+- consumer: liveness-monitor
+  filters:
+  - producer.heartbeat
+  role: Emits producer.silent when a source misses 2 × its interval (dead-man switch)
+  durable: true
+  ack: explicit, 10 s
+  maxDeliver: 2
+- consumer: flow-runner
+  filters:
+  - '>'
+  role: Starts the visual flows whose trigger matches; resumes runs parked on an awaited event
+  durable: true
+  ack: explicit, 10 min
+  maxDeliver: 5
+- consumer: audit-sink
+  filters:
+  - '>'
+  role: Append-only copy of every event; the audit log is this projection
+  durable: true
+  ack: explicit, 30 s
+  maxDeliver: 10
+- consumer: reconciler
+  filters:
+  - day.closed
+  role: Compares sources with projections and publishes correction events (cron used for correctness)
+  durable: true
+  ack: explicit, 30 min
+  maxDeliver: 2

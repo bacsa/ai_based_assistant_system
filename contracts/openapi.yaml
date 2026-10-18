@@ -1,0 +1,54 @@
+openapi: 3.1.0
+info:
+  title: Assistant Control Room API
+  version: 0.1.0
+  description: Backend contract for the console (docs/08-web-console.md §8.5, docs/10-flow-designer.md §10.8). All writes to definitions go to git.
+servers: [{ url: /api/v1 }]
+tags: [{ name: knowledge }, { name: rules }, { name: events }, { name: flows }, { name: tools }, { name: approvals }, { name: tasks }, { name: audit }]
+paths:
+  /kb/documents: { get: { tags: [knowledge], summary: List documents }, post: { tags: [knowledge], summary: Ingest a document (JSON or multipart), responses: { "202": { description: accepted; returns pipeline job id and extracted obligations when done } } } }
+  /kb/documents/{id}: { get: { tags: [knowledge], summary: Document with chunks, ACL, enrichment }, delete: { tags: [knowledge], summary: Remove from index } }
+  /kb/search: { post: { tags: [knowledge], summary: Hybrid search with ACL pre-filter and citations, requestBody: { content: { application/json: { schema: { type: object, required: [query], properties: { query: { type: string }, filters: { type: object } } } } } } } }
+  /kb/sources: { get: { tags: [knowledge] }, post: { tags: [knowledge], summary: Register a connector } }
+  /kb/sources/{id}/sync: { post: { tags: [knowledge] } }
+  /kb/glossary: { get: { tags: [knowledge] }, post: { tags: [knowledge] } }
+  /kb/gaps: { get: { tags: [knowledge] } }
+  /kb/gaps/{id}/request-document: { post: { tags: [knowledge] } }
+  /entities/{table}: { get: { tags: [knowledge], summary: Read an entity table (people, systems, deadlines, processes) }, put: { tags: [knowledge] } }
+  /rules: { get: { tags: [rules] }, post: { tags: [rules], summary: Create a draft rule (validated against schemas/rule.schema.json) } }
+  /rules/{id}: { get: { tags: [rules] }, put: { tags: [rules] }, delete: { tags: [rules] } }
+  /rules/{id}/status: { post: { tags: [rules], summary: "draft -> shadow -> active -> paused" } }
+  /rules/{id}/simulate: { post: { tags: [rules], summary: Evaluate on history (chart points, firings per key) } }
+  /rules/{id}/explain: { get: { tags: [rules], parameters: [{ name: at, in: query, schema: { type: string, format: date-time } }] } }
+  /events/stream: { get: { tags: [events], summary: Server-sent events of the bus (filterable by type / correlation) } }
+  /events: { get: { tags: [events], parameters: [{ name: type, in: query }, { name: correlation, in: query }, { name: since, in: query }] } }
+  /events/publish: { post: { tags: [events], summary: Publish a test event through ingress validation and idempotency } }
+  /events/catalogue: { get: { tags: [events] } }
+  /events/consumers: { get: { tags: [events], summary: Durable consumers with lag and processed counts } }
+  /events/timers: { get: { tags: [events] } }
+  /events/timers/{id}/fire: { post: { tags: [events] } }
+  /events/dlq: { get: { tags: [events] } }
+  /events/dlq/{id}/replay: { post: { tags: [events] } }
+  /flows: { get: { tags: [flows] }, post: { tags: [flows], summary: Create a flow (validated against schemas/flow.schema.json and graph rules) } }
+  /flows/{id}: { get: { tags: [flows] }, put: { tags: [flows] } }
+  /flows/{id}/activate: { post: { tags: [flows], summary: Compile, register the trigger subscription, write to git } }
+  /flows/{id}/pause: { post: { tags: [flows] } }
+  /flows/{id}/test: { post: { tags: [flows], summary: Run with a sample event and no side effects } }
+  /flows/{id}/runs: { get: { tags: [flows] } }
+  /runs/{id}: { get: { tags: [flows], summary: Run with per-node steps, input and output } }
+  /runs/{id}/replay: { post: { tags: [flows] } }
+  /runs/stream: { get: { tags: [flows], summary: Server-sent events of flow.run.* } }
+  /tools: { get: { tags: [tools], summary: Catalogue with health } }
+  /tools/{name}: { get: { tags: [tools] } }
+  /tools/{name}/call: { post: { tags: [tools], summary: Call through the guardrails (policy, dry run, approval), requestBody: { content: { application/json: { schema: { type: object, properties: { args: { type: object }, dry_run: { type: boolean } } } } } } } }
+  /playbooks: { get: { tags: [tools] } }
+  /approvals: { get: { tags: [approvals], parameters: [{ name: status, in: query }] } }
+  /approvals/{id}/approve: { post: { tags: [approvals] } }
+  /approvals/{id}/reject: { post: { tags: [approvals] } }
+  /tasks: { get: { tags: [tasks] } }
+  /tasks/{id}/ack: { post: { tags: [tasks] } }
+  /tasks/{id}/snooze: { post: { tags: [tasks] } }
+  /audit: { get: { tags: [audit], parameters: [{ name: actor, in: query }, { name: kind, in: query }, { name: since, in: query }] } }
+components:
+  securitySchemes: { oidc: { type: openIdConnect, openIdConnectUrl: https://idp.example.internal/.well-known/openid-configuration } }
+security: [{ oidc: [] }]

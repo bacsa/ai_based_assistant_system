@@ -1,0 +1,24 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: time. See docs/04-rule-system.md.
+id: vat-return
+type: time
+status: active
+owner: finance
+owner_role: finance_lead
+severity: high
+review_date: '2027-01-15'
+description: Monthly VAT return must be filed with NAV by the 20th.
+due:
+  day_of_month: 20
+lead_times_days:
+- 10
+- 3
+- 1
+requires_ack: true
+playbook: vat-return-checklist
+context_tools:
+- erp.get_period_status
+- kb.search
+escalation:
+- after: 48h
+  notify_role: cfo

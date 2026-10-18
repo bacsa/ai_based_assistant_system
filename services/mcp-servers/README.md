@@ -1,0 +1,3 @@
+# mcp-servers
+**Job:** one MCP server per company system (`mcp-erp`, `mcp-cms`, `mcp-seo`, `mcp-ticketing`, `mcp-slack`, `mcp-mail`, `kb`, `metrics`, `entities`), each exposing the tools in `tools/*.yaml` with that `server` value. Every tool: typed input/output, bounded output, `dry_run` and `idempotency_key` on writes, least-privilege service account from the vault, structured errors, contract test against the system's test instance.
+**Generate stubs from the specs:** `python3 scripts/validate.py` checks the specs; a `scripts/gen_mcp_stub.py` (to write per language) should render one handler per spec.

@@ -1,0 +1,7 @@
+id,name,domain,source_tool,cadence,dimensions,baseline_method,threshold_in_use_today,owner_role,history_available_weeks,notes
+search_console.clicks,"Organic clicks per landing page","seo","seo.get_search_console_series","daily (2-day lag)","page","same_weekday_median_28d","ratio < 0.70 for 2 days","seo_owner",6,"DEMO DATA. rules/seo-organic-drop.yaml"
+search_console.impressions,"Impressions per landing page","seo","seo.get_search_console_series","daily (2-day lag)","page","same_weekday_median_28d","ratio < 0.75 for 2 days (shadow)","seo_owner",6,"DEMO DATA. rules/seo-impressions-drop.yaml"
+analytics.sessions,"Sessions per landing page","seo","analytics.get_sessions","hourly","page","same_weekday_median_28d","used to confirm Search Console drops","seo_owner",6,"DEMO DATA"
+uptime.availability,"Website availability and 5xx rate","it","uptime.status (webhook)","1 min","site","binary / rate","3 failed checks in 5 minutes","it_lead",12,"DEMO DATA. Pattern in the rule engine"
+erp.orders.days_in_status,"Days an order spends in awaiting_payment","sales","orders.list_by_status (CDC)","on change","order","threshold","> 7 days","sales_ops",12,"DEMO DATA. rules/order-stuck-awaiting-payment.yaml"
+erp.invoices.overdue_days,"Days an invoice is overdue","finance","erp.list_overdue_invoices","on change + timers","invoice","threshold","7 / 21 / 35 days reminder ladder","finance_lead",12,"DEMO DATA. flows/invoice-reminder-ladder.json"

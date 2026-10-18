@@ -1,0 +1,33 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: cms.set_page_meta
+server: mcp-cms
+class: write
+risk: medium
+description: Sets title and meta description of a page.
+input_schema:
+  type: object
+  required:
+  - path
+  properties:
+    path:
+      type: string
+      enum:
+      - /pricing
+      - /
+      - /blog/seo-checklist
+      - /product/erp
+      - /contact
+    title:
+      type: string
+      default: Pricing – plans for every team size
+    dry_run:
+      type: boolean
+      default: true
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-cms
+observability:
+  log_arguments: true
+  mask_fields: []
+idempotency: idempotency_key required
+dry_run: supported

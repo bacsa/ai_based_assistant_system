@@ -1,0 +1,21 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: policy. See docs/04-rule-system.md.
+id: policy-payment-reminders
+type: policy
+status: active
+owner: finance
+tool: erp.create_payment_reminder
+dry_run_first: true
+rate_limit: 200 per day, 1 per customer per week
+description: Who may send payment reminders automatically.
+decisions:
+- when: amount < 500 and level <= 2 and customer not flagged
+  allow: auto
+- when: level == 3 or customer flagged
+  allow: approve
+  approver_role: finance_lead
+- when: level > 3
+  allow: forbid
+- when: otherwise
+  allow: approve
+  approver_role: finance_lead

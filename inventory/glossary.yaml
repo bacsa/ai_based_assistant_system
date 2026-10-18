@@ -1,0 +1,32 @@
+# Company terms and synonyms used in retrieval. DEMO DATA.
+glossary:
+- term: NAV
+  meaning: Nemzeti Adó- és Vámhivatal, the Hungarian tax authority
+  synonyms:
+  - tax authority
+  - tax office
+- term: ÁFA
+  meaning: Általános forgalmi adó, value added tax
+  synonyms:
+  - VAT
+  - sales tax
+- term: KP
+  meaning: 'Key pages: the website pages monitored for SEO'
+  synonyms:
+  - key page
+  - key pages
+- term: SO
+  meaning: Sales order in the ERP Orders module
+  synonyms:
+  - sales order
+  - order
+- term: SC
+  meaning: Google Search Console
+  synonyms:
+  - search console
+  - GSC
+- term: CWV
+  meaning: Core Web Vitals (LCP, INP, CLS)
+  synonyms:
+  - core web vitals
+  - page speed

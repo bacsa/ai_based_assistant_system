@@ -1,0 +1,29 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: crawler.diff_page
+server: mcp-seo
+class: read
+risk: low
+description: Compares the current crawl of a page with the crawl from a given number of days ago and lists SEO-relevant
+  changes.
+input_schema:
+  type: object
+  required:
+  - url
+  properties:
+    url:
+      type: string
+      enum:
+      - /pricing
+      - /
+      - /blog/seo-checklist
+      - /product/erp
+      - /contact
+    since_days:
+      type: integer
+      default: 7
+auth:
+  mode: service_account
+  credential_ref: vault://mcp-seo
+observability:
+  log_arguments: true
+  mask_fields: []

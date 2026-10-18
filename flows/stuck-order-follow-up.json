@@ -1,0 +1,142 @@
+{
+  "id": "stuck-order-follow-up",
+  "name": "Stuck order follow-up",
+  "version": 1,
+  "status": "active",
+  "owner": "sales",
+  "description": "Reacts to CDC events from the ERP orders table. The rule node keeps the 7-day threshold where it belongs.",
+  "trigger": {
+    "eventType": "erp.order.status_changed",
+    "filter": "data.status == awaiting_payment"
+  },
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "name": "On erp.order.status_changed",
+      "params": {
+        "eventType": "erp.order.status_changed",
+        "filter": "data.status == awaiting_payment"
+      },
+      "position": [
+        30,
+        30
+      ]
+    },
+    {
+      "id": "isstuck",
+      "type": "rule",
+      "name": "Stuck for more than 7 days?",
+      "params": {
+        "ruleId": "order-stuck-awaiting-payment"
+      },
+      "position": [
+        270,
+        30
+      ]
+    },
+    {
+      "id": "draft",
+      "type": "agent",
+      "name": "Draft the follow-up email",
+      "params": {
+        "playbook": "stuck-order-follow-up",
+        "instruction": "Draft a polite payment follow-up for {{data.customer}} about {{data.order_id}}."
+      },
+      "position": [
+        510,
+        30
+      ]
+    },
+    {
+      "id": "send",
+      "type": "approval",
+      "name": "Sales ops approve sending",
+      "params": {
+        "tool": "slack.post_message",
+        "args": "{\"channel\":\"#sales-ops\",\"text\":\"Follow-up for {{data.order_id}} ready to send\"}",
+        "approverRole": "sales_ops"
+      },
+      "position": [
+        750,
+        30
+      ]
+    },
+    {
+      "id": "note",
+      "type": "tool",
+      "name": "Note on the order",
+      "params": {
+        "tool": "ticketing.create_issue",
+        "args": "{\"project\":\"FIN\",\"summary\":\"Follow-up sent for {{data.order_id}}\"}"
+      },
+      "position": [
+        990,
+        30
+      ]
+    },
+    {
+      "id": "ok",
+      "type": "end",
+      "name": "Followed up",
+      "params": {
+        "status": "success",
+        "summary": "Customer contacted"
+      },
+      "position": [
+        1230,
+        30
+      ]
+    },
+    {
+      "id": "skip",
+      "type": "end",
+      "name": "Not stuck yet",
+      "params": {
+        "status": "success",
+        "summary": "Timer will re-check at +7 d"
+      },
+      "position": [
+        990,
+        126
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "trigger",
+      "to": "isstuck",
+      "label": ""
+    },
+    {
+      "from": "isstuck",
+      "to": "draft",
+      "label": "fired"
+    },
+    {
+      "from": "isstuck",
+      "to": "skip",
+      "label": "not fired"
+    },
+    {
+      "from": "draft",
+      "to": "send",
+      "label": ""
+    },
+    {
+      "from": "send",
+      "to": "note",
+      "label": "approved"
+    },
+    {
+      "from": "send",
+      "to": "skip",
+      "label": "rejected"
+    },
+    {
+      "from": "note",
+      "to": "ok",
+      "label": ""
+    }
+  ]
+}

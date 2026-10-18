@@ -1,0 +1,1 @@
+See `AGENTS.md` and `HANDOVER.md`. Validate definitions with `python3 scripts/validate.py`; run `pytest -q` in `reference/python` and `npm test` in `console/` before committing changes to engines or the prototype.

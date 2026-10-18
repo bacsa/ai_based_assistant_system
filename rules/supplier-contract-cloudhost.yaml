@@ -1,0 +1,23 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: time. See docs/04-rule-system.md.
+id: supplier-contract-cloudhost
+type: time
+status: active
+owner: procurement
+owner_role: procurement_lead
+severity: medium
+review_date: '2027-06-01'
+description: Hosting provider contract renews automatically; notice must be given 60 days before.
+due:
+  date: '2026-12-02'
+lead_times_days:
+- 90
+- 60
+- 30
+requires_ack: true
+playbook: null
+context_tools:
+- kb.search
+escalation:
+- after: 72h
+  notify_role: cfo

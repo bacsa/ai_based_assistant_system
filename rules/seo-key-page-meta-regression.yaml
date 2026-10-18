@@ -1,0 +1,31 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: pattern. See docs/04-rule-system.md.
+id: seo-key-page-meta-regression
+type: pattern
+status: active
+owner: marketing
+owner_role: seo_owner
+severity: high
+review_date: '2027-04-01'
+description: A key page lost index,follow, its canonical or its title right after a CMS publish. Fires on the crawl
+  diff within seconds, before traffic is lost.
+pattern:
+  'on': crawl.page.changed
+  where:
+    path_in: key_pages
+    changed_fields_any:
+    - robots
+    - canonical
+    - title
+  after: cms.page.published
+  within: 10m
+  key: path
+playbook: seo-drop-triage
+allowed_actions:
+- slack.post_message
+- ticketing.create_issue
+- cms.remove_noindex
+- cms.set_page_meta
+escalation:
+- after: 4h
+  notify_role: marketing_lead

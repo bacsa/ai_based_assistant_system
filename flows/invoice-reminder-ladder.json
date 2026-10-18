@@ -1,0 +1,197 @@
+{
+  "id": "invoice-reminder-ladder",
+  "name": "Invoice reminder ladder",
+  "version": 1,
+  "status": "active",
+  "owner": "finance",
+  "description": "Starts for every posted invoice and sleeps on durable timers; a payment event ends it at any point. Level 3 always goes through finance.",
+  "trigger": {
+    "eventType": "erp.invoice.posted",
+    "filter": ""
+  },
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger",
+      "name": "On erp.invoice.posted",
+      "params": {
+        "eventType": "erp.invoice.posted",
+        "filter": ""
+      },
+      "position": [
+        30,
+        30
+      ]
+    },
+    {
+      "id": "waitdue",
+      "type": "delay",
+      "name": "Wait until due + 7 days",
+      "params": {
+        "duration": "21d"
+      },
+      "position": [
+        270,
+        30
+      ]
+    },
+    {
+      "id": "paid",
+      "type": "wait",
+      "name": "Paid in the meantime?",
+      "params": {
+        "eventType": "erp.invoice.paid",
+        "keyField": "invoice_id",
+        "timeout": "0s"
+      },
+      "position": [
+        510,
+        30
+      ]
+    },
+    {
+      "id": "l1",
+      "type": "tool",
+      "name": "Reminder level 1",
+      "params": {
+        "tool": "erp.create_payment_reminder",
+        "args": "{\"invoice_id\":\"{{data.invoice_id}}\",\"amount\":{{data.amount}},\"level\":1,\"dry_run\":false}"
+      },
+      "position": [
+        750,
+        30
+      ]
+    },
+    {
+      "id": "wait2",
+      "type": "delay",
+      "name": "Wait 14 days",
+      "params": {
+        "duration": "14d"
+      },
+      "position": [
+        990,
+        30
+      ]
+    },
+    {
+      "id": "paid2",
+      "type": "wait",
+      "name": "Paid now?",
+      "params": {
+        "eventType": "erp.invoice.paid",
+        "keyField": "invoice_id",
+        "timeout": "0s"
+      },
+      "position": [
+        1230,
+        30
+      ]
+    },
+    {
+      "id": "l3",
+      "type": "approval",
+      "name": "Approve collection notice (level 3)",
+      "params": {
+        "tool": "erp.create_payment_reminder",
+        "args": "{\"invoice_id\":\"{{data.invoice_id}}\",\"amount\":{{data.amount}},\"level\":3,\"dry_run\":false}",
+        "approverRole": "finance_lead"
+      },
+      "position": [
+        1470,
+        30
+      ]
+    },
+    {
+      "id": "closed",
+      "type": "end",
+      "name": "Invoice paid",
+      "params": {
+        "status": "success",
+        "summary": "Paid, ladder stopped"
+      },
+      "position": [
+        1470,
+        126
+      ]
+    },
+    {
+      "id": "sent",
+      "type": "end",
+      "name": "Collection notice sent",
+      "params": {
+        "status": "success",
+        "summary": "Handed to collection"
+      },
+      "position": [
+        1710,
+        30
+      ]
+    },
+    {
+      "id": "held",
+      "type": "end",
+      "name": "Held by finance",
+      "params": {
+        "status": "stopped",
+        "summary": "Finance declined the collection notice"
+      },
+      "position": [
+        1710,
+        126
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "trigger",
+      "to": "waitdue",
+      "label": ""
+    },
+    {
+      "from": "waitdue",
+      "to": "paid",
+      "label": ""
+    },
+    {
+      "from": "paid",
+      "to": "closed",
+      "label": "received"
+    },
+    {
+      "from": "paid",
+      "to": "l1",
+      "label": "timeout"
+    },
+    {
+      "from": "l1",
+      "to": "wait2",
+      "label": ""
+    },
+    {
+      "from": "wait2",
+      "to": "paid2",
+      "label": ""
+    },
+    {
+      "from": "paid2",
+      "to": "closed",
+      "label": "received"
+    },
+    {
+      "from": "paid2",
+      "to": "l3",
+      "label": "timeout"
+    },
+    {
+      "from": "l3",
+      "to": "sent",
+      "label": "approved"
+    },
+    {
+      "from": "l3",
+      "to": "held",
+      "label": "rejected"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: policy. See docs/04-rule-system.md.
+id: policy-communication
+type: policy
+status: active
+owner: it
+tool: slack.post_message
+dry_run_first: false
+rate_limit: 60 per hour
+description: Where the assistant may post on its own.
+decisions:
+- when: channel is the task owner channel or a DM to the owner
+  allow: auto
+- when: 'channel == #general'
+  allow: approve
+  approver_role: marketing_lead
+- when: otherwise
+  allow: auto

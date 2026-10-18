@@ -1,0 +1,2 @@
+# console-api
+**Job:** backend of the control room (`contracts/openapi.yaml`): knowledge, rules, events (REST + SSE stream), flows (CRUD, activate, test, runs, replay), tools (catalogue, call through guardrails), approvals, audit, tasks. Definitions are written to git (branch + pull request in regulated setups) so the console and the repository never diverge. Auth: OIDC; roles from `inventory/people.yaml`.

@@ -1,0 +1,30 @@
+# Tool spec. Schema: schemas/tool.schema.json. One MCP server per system; see docs/05-tool-system.md.
+name: kb.search
+server: kb
+class: knowledge
+risk: low
+description: Hybrid search over the document index. Returns the best matching chunks with citations, filtered by
+  the caller's permissions.
+input_schema:
+  type: object
+  required:
+  - query
+  properties:
+    query:
+      type: string
+      default: How many days before expiry do we renew the certificate?
+    department:
+      type: string
+      enum:
+      - finance
+      - it
+      - marketing
+      - sales
+      - hr
+      - procurement
+auth:
+  mode: service_account
+  credential_ref: vault://kb
+observability:
+  log_arguments: true
+  mask_fields: []

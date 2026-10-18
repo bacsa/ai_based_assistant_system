@@ -1,0 +1,12 @@
+{
+  "name": "assistant-control-room",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Clickable prototype of the assistant control room (single HTML file, in-browser engines, demo data).",
+  "scripts": {
+    "serve": "python3 -m http.server 8080",
+    "test": "mkdir -p tests/out && node tests/smoke-core.js && node tests/smoke-events.js && node tests/smoke-flows.js",
+    "check": "node -e \"const fs=require('fs');const s=fs.readFileSync('index.html','utf8');const a=s.indexOf('<script>')+8,b=s.lastIndexOf('</script>');new Function(s.slice(a,b));console.log('syntax ok')\""
+  },
+  "devDependencies": { "playwright": "^1.56.0" }
+}

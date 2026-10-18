@@ -1,0 +1,36 @@
+{
+  "questions": [
+    {
+      "q": "How many days before expiry do we renew the TLS certificate?",
+      "doc": "certificate-management"
+    },
+    {
+      "q": "When is the VAT return due?",
+      "doc": "vat-return-procedure"
+    },
+    {
+      "q": "What are the payment reminder levels?",
+      "doc": "finance-handbook"
+    },
+    {
+      "q": "Who owns the pricing page?",
+      "doc": "cms-release-process"
+    },
+    {
+      "q": "What notice period do supplier contracts need?",
+      "doc": "supplier-contract-policy"
+    },
+    {
+      "q": "What happens to an order awaiting payment for more than a week?",
+      "doc": "erp-user-guide-orders"
+    },
+    {
+      "q": "When does probation end for a new employee?",
+      "doc": "onboarding-checklist"
+    },
+    {
+      "q": "What is checked before publishing a key page?",
+      "doc": "cms-release-process"
+    }
+  ]
+}

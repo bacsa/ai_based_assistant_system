@@ -1,0 +1,2 @@
+name,owner,type,purpose,access_path,auth,entities,events_emitted,test_instance,criticality,integration_option,notes
+"ERP (in-house)","","in-house","orders, invoices, accounting","REST API | DB read replica | file export | UI only","SSO | API key | service account","customers, orders, invoices","webhooks | DB log (CDC) | none","yes | no","high | medium | low","outbox | CDC | webhook | collector | UI automation",""

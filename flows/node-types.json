@@ -1,0 +1,73 @@
+{
+  "trigger": {
+    "label": "Trigger",
+    "hint": "starts a run when an event arrives",
+    "cls": "nt-trigger"
+  },
+  "filter": {
+    "label": "Filter",
+    "hint": "condition on the data",
+    "cls": "nt-filter",
+    "branches": [
+      "true",
+      "false"
+    ]
+  },
+  "rule": {
+    "label": "Rule",
+    "hint": "evaluate a rule from the rule system",
+    "cls": "nt-filter",
+    "branches": [
+      "fired",
+      "not fired"
+    ]
+  },
+  "tool": {
+    "label": "Tool",
+    "hint": "call a tool (reads auto, writes through policy)",
+    "cls": "nt-tool"
+  },
+  "agent": {
+    "label": "Agent step",
+    "hint": "run a playbook / bounded LLM task",
+    "cls": "nt-agent"
+  },
+  "approval": {
+    "label": "Approval",
+    "hint": "ask a role; the run waits",
+    "cls": "nt-approval",
+    "branches": [
+      "approved",
+      "rejected"
+    ]
+  },
+  "notify": {
+    "label": "Notify",
+    "hint": "message a channel or person",
+    "cls": "nt-notify"
+  },
+  "task": {
+    "label": "Task",
+    "hint": "create a task for a role",
+    "cls": "nt-notify"
+  },
+  "wait": {
+    "label": "Wait for event",
+    "hint": "pause until an event with the same key arrives",
+    "cls": "nt-wait",
+    "branches": [
+      "received",
+      "timeout"
+    ]
+  },
+  "delay": {
+    "label": "Delay",
+    "hint": "pause on a durable timer",
+    "cls": "nt-wait"
+  },
+  "end": {
+    "label": "End",
+    "hint": "finish the run",
+    "cls": "nt-end"
+  }
+}

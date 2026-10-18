@@ -1,0 +1,21 @@
+# Rule definition. Schema: schemas/rule.schema.json. Lifecycle: draft -> shadow -> active -> paused.
+# Type: state. See docs/04-rule-system.md.
+id: ticket-first-response-sla
+type: state
+status: draft
+owner: support
+owner_role: support_lead
+severity: medium
+review_date: '2027-02-01'
+description: Open ticket without a first response for more than 4 hours.
+entity: tickets
+where:
+  status: open
+  first_response: false
+condition:
+  hours_open_gt: 4
+schedule: webhook + 15 min poller
+playbook: null
+allowed_actions:
+- slack.post_message
+escalation: []
