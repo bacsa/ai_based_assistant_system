@@ -12,3 +12,5 @@
 10. [08-web-console.md](08-web-console.md) – console screens, data model, API.
 11. [07-roadmap.md](07-roadmap.md) – phases, team, risks, repository layout.
 12. [11-decisions.md](11-decisions.md) – decision log with rationale.
+
+- [12. Unified design system and screen designs](12-design-system.md) — tokens, components, canvas map for console, shell, chat and discovery.

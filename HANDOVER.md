@@ -24,7 +24,7 @@ read this file first, then follow the order of work in §4.
 |------|------|--------|
 | `README.md` | overview and principles | reusable |
 | `docs/00-index.md` | reading order for the documents | reusable |
-| `docs/01` … `docs/11` | discovery, architecture, knowledge base, rules, tools, learning loop, roadmap, console, events, flows, decisions | reusable |
+| `docs/01` … `docs/12` | discovery, architecture, knowledge base, rules, tools, learning loop, roadmap, console, events, flows, decisions | reusable |
 | `inventory/templates/` | blank discovery templates (systems, processes, deadlines, signals, people, documents, NFR) | reusable |
 | `inventory/*.csv|yaml` | the demo company's inventory | **demo data** |
 | `rules/*.yaml` | rule definitions (threshold, time, state, pattern, policy) | demo content, reusable format |
